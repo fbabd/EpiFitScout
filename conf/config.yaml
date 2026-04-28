@@ -1,0 +1,21 @@
+# EpiFitScout configuration
+# All scoring and search hyperparameters live here.
+# Paths are passed as CLI arguments (machine-specific).
+
+# MASTER search
+master:
+  rmsd_threshold: 1.5   # Maximum backbone RMSD (Å) to retain a hit
+  max_hits: 500          # Maximum number of hits returned by MASTER
+  timeout_seconds: 300   # Per-query timeout in seconds
+
+# Shape complementarity score
+# S_shape = clip((weight_depth * Sd + weight_tau * S_tau + 1) / 2, 0, 1)
+scoring:
+  weight_depth: 0.7      # Weight for depth anti-correlation component (Sd)
+  weight_tau: 0.3        # Weight for backbone torsion co-correlation (S_tau)
+
+# Final ranking score
+# S_final = weight_rmsd * 1/(1+RMSD) + weight_shape * S_shape
+ranking:
+  weight_rmsd: 0.4       # Weight for structural similarity (RMSD) term
+  weight_shape: 0.6      # Weight for shape complementarity term
