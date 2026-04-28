@@ -1,0 +1,32 @@
+{
+  "pdb/8RTW_B_H.pdb": {
+    "pdb_id": "8RTW",
+    "chain": "B",
+    "chain_type": "H"
+  },
+  "pdb/8RTW_A_L.pdb": {
+    "pdb_id": "8RTW",
+    "chain": "A",
+    "chain_type": "L"
+  },
+  "pdb/8RTW_D_H.pdb": {
+    "pdb_id": "8RTW",
+    "chain": "D",
+    "chain_type": "H"
+  },
+  "pdb/8RTW_C_L.pdb": {
+    "pdb_id": "8RTW",
+    "chain": "C",
+    "chain_type": "L"
+  },
+  "pdb/8RTX_B_H.pdb": {
+    "pdb_id": "8RTX",
+    "chain": "B",
+    "chain_type": "H"
+  },
+  "pdb/8RTX_A_L.pdb": {
+    "pdb_id": "8RTX",
+    "chain": "A",
+    "chain_type": "L"
+  }
+}
