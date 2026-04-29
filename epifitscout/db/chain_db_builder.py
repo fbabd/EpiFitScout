@@ -30,7 +30,7 @@ Usage::
     builder  = ChainDbBuilder(
         db_dir=Path("data/sabdab_chains.db"),
         downloader=dl,
-        create_pds_binary=Path("MASTER/master-v1.6/bin/createPDS"),
+        create_pds_binary=Path("MASTER/bin/createPDS"),
     )
     pds_list = builder.build_from_sabdab(entries)
 """
@@ -42,7 +42,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from epifitscout.db.rcsb_downloader import RcsbDownloader
+from epifitscout.db.rcsb_downloader import RcsbDownloader, StructureFile
 from epifitscout.db.sabdab_metadata import SAbDabEntry
 from epifitscout.utils.io import extract_backbone_coords_by_range, fragment_to_pdb_string
 
@@ -115,8 +115,8 @@ class ChainDbBuilder:
         for pdb_id, chain_id in chain_assignments:
             if chain_id is None:
                 try:
-                    pdb_path = self._downloader.download(pdb_id)
-                    for cid in _discover_chains(pdb_path):
+                    sf = self._downloader.download(pdb_id)
+                    for cid in _discover_chains(sf.path, sf.fmt):
                         expanded.append((pdb_id, cid, ""))
                 except Exception as exc:
                     logger.warning("Skipping %s (download error): %s", pdb_id, exc)
@@ -148,13 +148,13 @@ class ChainDbBuilder:
 
         for i, (pdb_id, chain_id, chain_type) in enumerate(assignments, 1):
             try:
-                rcsb_pdb = self._downloader.download(pdb_id)
+                rcsb_sf = self._downloader.download(pdb_id)
             except Exception as exc:
                 logger.warning("Download failed for %s: %s", pdb_id, exc)
                 skipped += 1
                 continue
 
-            out_pdb = self._write_chain_pdb(rcsb_pdb, pdb_id, chain_id, chain_type)
+            out_pdb = self._write_chain_pdb(rcsb_sf, pdb_id, chain_id, chain_type)
             if out_pdb is None:
                 skipped += 1
                 continue
@@ -194,12 +194,12 @@ class ChainDbBuilder:
 
     def _write_chain_pdb(
         self,
-        rcsb_pdb: Path,
+        rcsb_sf: StructureFile,
         pdb_id: str,
         chain_id: str,
         chain_type: str,
     ) -> Path | None:
-        """Extract one chain from an RCSB PDB and write to pdb/ dir."""
+        """Extract one chain from an RCSB structure file and write to pdb/ dir."""
         suffix = f"_{chain_type}" if chain_type else ""
         filename = f"{pdb_id}_{chain_id}{suffix}.pdb"
         out_path = self._pdb_dir / filename
@@ -209,7 +209,7 @@ class ChainDbBuilder:
 
         try:
             coords, resnums, sequence = extract_backbone_coords_by_range(
-                rcsb_pdb, chain_id, res_start=1, res_end=9999
+                rcsb_sf.path, chain_id, res_start=1, res_end=9999, fmt=rcsb_sf.fmt
             )
         except ValueError as exc:
             logger.debug("Skipping %s chain %s: %s", pdb_id, chain_id, exc)
@@ -261,11 +261,18 @@ class ChainDbBuilder:
         return pds_path
 
 
-def _discover_chains(pdb_path: Path) -> list[str]:
-    """Return unique chain IDs with ATOM records in a PDB file, in order."""
+def _discover_chains(struct_path: Path, fmt: str = "pdb") -> list[str]:
+    """Return unique chain IDs with ATOM records in a structure file, in order."""
+    if fmt == "cif":
+        from Bio import PDB as biopdb
+        parser = biopdb.MMCIFParser(QUIET=True)
+        structure = parser.get_structure("tmp", str(struct_path))
+        model = next(iter(structure))
+        return list(model.child_dict.keys())
+
     seen: list[str] = []
     seen_set: set[str] = set()
-    with pdb_path.open() as fh:
+    with struct_path.open() as fh:
         for line in fh:
             if line.startswith("ATOM") and len(line) >= 22:
                 chain_id = line[21]

@@ -60,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--create_pds",
         type=Path,
-        default=_PROJECT_ROOT / "MASTER/master-v1.6/bin/createPDS",
+        default=_PROJECT_ROOT / "MASTER/bin/createPDS",
         help="Path to MASTER createPDS binary.",
     )
     p.add_argument(

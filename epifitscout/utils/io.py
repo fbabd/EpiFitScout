@@ -130,6 +130,7 @@ def extract_backbone_coords_by_range(
     chain_id: str,
     res_start: int,
     res_end: int,
+    fmt: str = "pdb",
 ) -> tuple[np.ndarray, list[int], str]:
     """Extract backbone coords for all residues in [res_start, res_end] (inclusive).
 
@@ -137,10 +138,11 @@ def extract_backbone_coords_by_range(
     whose integer resseq falls within the range.
 
     Args:
-        pdb_path: Path to PDB file.
+        pdb_path: Path to structure file.
         chain_id: Chain identifier.
         res_start: First residue number (inclusive).
         res_end: Last residue number (inclusive).
+        fmt: File format — "pdb" (default) or "cif".
 
     Returns:
         Tuple of (coords, residue_numbers, sequence) where:
@@ -154,7 +156,9 @@ def extract_backbone_coords_by_range(
     except ImportError as e:
         raise ImportError("BioPython is required for PDB parsing.") from e
 
-    parser = biopdb.PDBParser(QUIET=True)
+    parser = (
+        biopdb.MMCIFParser(QUIET=True) if fmt == "cif" else biopdb.PDBParser(QUIET=True)
+    )
     structure = parser.get_structure("tmp", str(pdb_path))
     model = next(iter(structure))
 

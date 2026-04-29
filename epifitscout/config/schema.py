@@ -15,11 +15,13 @@ from pathlib import Path
 class MASTERConfig:
     """Configuration for the MASTER search step."""
 
-    binary_path: Path = Path("MASTER/master-v1.6/bin/master")
+    binary_path: Path = Path("MASTER/bin/master")
     database_path: Path = Path("data/sabdab_chains.db/pds.list")
-    rmsd_threshold: float = 1.5
+    rmsd_threshold: float = 2.0
     max_hits: int = 500
-    timeout_seconds: int = 300
+    timeout_seconds: int = 420
+    n_threads: int = 0
+
 
 
 @dataclass(frozen=True)
@@ -56,3 +58,5 @@ class PipelineConfig:
     scoring: ScoringConfig = field(default_factory=ScoringConfig)
     ranking: RankingConfig = field(default_factory=RankingConfig)
     log_level: str = "INFO"
+    max_workers: int = 6   # 1 = sequential; >1 = parallel search_many()
+

@@ -21,7 +21,7 @@ Requirements
 Usage
 -----
     cd /path/to/ProtStructDB
-    uv run python run/example_1a2y.py
+    uv run python example/example_1a2y.py
 """
 
 from __future__ import annotations
@@ -426,7 +426,7 @@ ax3.annotate(
 ax3.text(
     0.03, 0.97,
     f"$N_{{\\mathrm{{hits}}}}$ = {n_hits}\n"
-    f"$\\delta$ = 1.5 Å\n"
+    f"$\\delta$ = 2.0 Å\n"
     f"$w_r$ = 0.4,  $w_s$ = 0.6",
     transform=ax3.transAxes, fontsize=7, va="top", family="monospace",
     bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#cccccc", alpha=0.9, lw=0.7),

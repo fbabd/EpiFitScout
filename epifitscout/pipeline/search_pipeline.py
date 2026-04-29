@@ -1,12 +1,10 @@
-"""FragmentSearchPipeline: MASTER chain-DB search → shape complementarity → rank.
-
-External systems import only this class (or its individual step methods).
-"""
+"""FragmentSearchPipeline: MASTER chain-DB search → shape complementarity → rank."""
 
 from __future__ import annotations
 
 import logging
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from epifitscout.config.schema import PipelineConfig
@@ -28,23 +26,25 @@ class FragmentSearchPipeline:
       2. Shape complementarity scoring (in the MASTER superposition frame).
       3. Ranking by weighted combination of shape score and RMSD.
 
+    When ``cfg.max_workers > 1``, MASTER searches the database in parallel
+    across shards for a single query — ~N× speedup over sequential search.
+
     Usage (full pipeline)::
 
-        cfg = PipelineConfig(...)
+        cfg = PipelineConfig(max_workers=6)
         pipeline = FragmentSearchPipeline(cfg)
         hits = pipeline.search(query_cdr, query_epitope)
 
-    Usage (step-by-step)::
+    Usage (multiple queries in parallel)::
 
-        raw_hits  = pipeline.run_master(query_cdr, output_dir=Path("/tmp/run"))
-        comp_hits = pipeline.score_complementarity(raw_hits, query_epitope)
-        ranked    = pipeline.rank(comp_hits, [rmsd for _, _, rmsd in raw_hits])
+        pairs = [(cdr1, epi1), (cdr2, epi2), (cdr3, epi3)]
+        all_hits = pipeline.search_many(pairs)
     """
 
     def __init__(self, cfg: PipelineConfig) -> None:
         logging.basicConfig(level=getattr(logging, cfg.log_level.upper(), logging.INFO))
         self._cfg = cfg
-        self._runner = MASTERRunner(cfg.master)
+        self._runner = MASTERRunner(cfg.master, max_workers=cfg.max_workers)
         self._scorer = ShapeComplementarityScorer(
             weight_depth=cfg.scoring.weight_depth,
             weight_tau=cfg.scoring.weight_tau,
@@ -61,13 +61,15 @@ class FragmentSearchPipeline:
         query_epitope: Fragment,
         output_dir: Path | None = None,
     ) -> list[ScoredHit]:
-        """Run the complete 3-step pipeline.
+        """Run the complete 3-step pipeline for a single query pair.
+
+        When ``cfg.max_workers > 1``, the MASTER search is sharded across
+        workers automatically — no change needed at the call site.
 
         Args:
             query_cdr: Query CDR fragment (backbone coords).
             query_epitope: Query epitope fragment (backbone coords).
-            output_dir: Directory for MASTER intermediate files. If None, a
-                temporary directory is created and cleaned up automatically.
+            output_dir: Directory for MASTER intermediate files. Auto-temp if None.
 
         Returns:
             Ranked list of ScoredHit objects.
@@ -77,6 +79,47 @@ class FragmentSearchPipeline:
 
         with tempfile.TemporaryDirectory(prefix="epifitscout_") as tmp:
             return self._run(query_cdr, query_epitope, Path(tmp))
+
+    def search_many(
+        self,
+        queries: list[tuple[Fragment, Fragment]],
+        max_workers: int | None = None,
+    ) -> list[list[ScoredHit]]:
+        """Run the pipeline in parallel for multiple (cdr, epitope) pairs.
+
+        Note: this parallelises across query pairs — each pair still uses
+        the sharded MASTER runner internally if ``cfg.max_workers > 1``.
+        For a single query pair, use ``search()`` with sharding instead.
+
+        Args:
+            queries: List of (query_cdr, query_epitope) pairs.
+            max_workers: Parallel pipelines. Defaults to cfg.max_workers.
+
+        Returns:
+            Ranked ScoredHit lists in the same order as input queries.
+        """
+        workers = max_workers if max_workers is not None else self._cfg.max_workers
+
+        def _run_one(args: tuple[int, Fragment, Fragment]) -> tuple[int, list[ScoredHit]]:
+            idx, cdr, epitope = args
+            with tempfile.TemporaryDirectory(prefix=f"epifitscout_{idx}_") as tmp:
+                return idx, self._run(cdr, epitope, Path(tmp))
+
+        results: list[list[ScoredHit]] = [[] for _ in queries]
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_run_one, (i, cdr, epi)): i
+                for i, (cdr, epi) in enumerate(queries)
+            }
+            for future in as_completed(futures):
+                idx, hits = future.result()
+                results[idx] = hits
+                logger.info(
+                    "Query %d/%d done: %d hits", idx + 1, len(queries), len(hits)
+                )
+
+        return results
 
     # ------------------------------------------------------------------ #
     # Public API — individual steps
@@ -89,6 +132,8 @@ class FragmentSearchPipeline:
     ) -> list[tuple[Fragment, Superposition, float]]:
         """Step 1: run MASTER and return (fragment, superposition, rmsd) tuples.
 
+        Automatically uses sharded parallel search when cfg.max_workers > 1.
+
         Args:
             query_cdr: Query CDR fragment.
             output_dir: Directory to write MASTER files.
@@ -96,7 +141,11 @@ class FragmentSearchPipeline:
         Returns:
             List of (Fragment, Superposition, rmsd) sorted by RMSD ascending.
         """
-        match_path = self._runner.run(query_cdr, output_dir)
+        if self._cfg.max_workers > 1:
+            match_path = self._runner.run_sharded(query_cdr, output_dir)
+        else:
+            match_path = self._runner.run(query_cdr, output_dir)
+
         result: list[tuple[Fragment, Superposition, float]] = parse_match_file(
             match_path,
             rmsd_threshold=self._cfg.master.rmsd_threshold,
@@ -110,18 +159,7 @@ class FragmentSearchPipeline:
         hits: list[tuple[Fragment, Superposition, float]],
         query_epitope: Fragment,
     ) -> list[tuple[Fragment, Superposition, float]]:
-        """Step 2: score each hit for shape complementarity.
-
-        Applies the MASTER superposition to each hit CDR and scores how well
-        it complements the query epitope in the binding-pose frame.
-
-        Args:
-            hits: Output of run_master() — (Fragment, Superposition, rmsd).
-            query_epitope: Query epitope fragment.
-
-        Returns:
-            List of (Fragment, Superposition, complementarity_score).
-        """
+        """Step 2: score each hit for shape complementarity."""
         epi_coords = query_epitope.coords
         result: list[tuple[Fragment, Superposition, float]] = []
 
@@ -138,15 +176,7 @@ class FragmentSearchPipeline:
         comp_hits: list[tuple[Fragment, Superposition, float]],
         rmsd_scores: list[float],
     ) -> list[ScoredHit]:
-        """Step 3: rank hits by shape score + RMSD.
-
-        Args:
-            comp_hits: Output of score_complementarity().
-            rmsd_scores: MASTER RMSD values aligned 1-to-1 with comp_hits.
-
-        Returns:
-            Ranked list of ScoredHit objects.
-        """
+        """Step 3: rank hits by shape score + RMSD."""
         return self._ranker.rank(comp_hits, rmsd_scores)
 
     # ------------------------------------------------------------------ #

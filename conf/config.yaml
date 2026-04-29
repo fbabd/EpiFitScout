@@ -4,9 +4,10 @@
 
 # MASTER search
 master:
-  rmsd_threshold: 1.5   # Maximum backbone RMSD (Å) to retain a hit
+  rmsd_threshold: 2.0   # Maximum backbone RMSD (Å) to retain a hit
   max_hits: 500          # Maximum number of hits returned by MASTER
-  timeout_seconds: 300   # Per-query timeout in seconds
+  timeout_seconds: 420   # Per-query timeout in seconds
+  n_threads: 0        # 0 = disabled; set to CPU count to enable (requires OpenMP build)
 
 # Shape complementarity score
 # S_shape = clip((weight_depth * Sd + weight_tau * S_tau + 1) / 2, 0, 1)
@@ -19,3 +20,6 @@ scoring:
 ranking:
   weight_rmsd: 0.4       # Weight for structural similarity (RMSD) term
   weight_shape: 0.6      # Weight for shape complementarity term
+
+max_workers: 6
+
