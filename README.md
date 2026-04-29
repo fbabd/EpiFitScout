@@ -159,21 +159,24 @@ All hyperparameters are in `conf/config.yaml` and auto-loaded by `search()`.
 ```yaml
 # MASTER search
 master:
-  rmsd_threshold: 1.5    # maximum backbone RMSD (Å) to retain a hit
-  max_hits: 500          # maximum number of hits from MASTER
-  timeout_seconds: 300   # per-query timeout
+  rmsd_threshold: 2.0   # Maximum backbone RMSD (Å) to retain a hit
+  max_hits: 500          # Maximum number of hits returned by MASTER
+  timeout_seconds: 420   # Per-query timeout in seconds
+  n_threads: 0        # 0 = disabled; set to CPU count to enable (requires OpenMP build)
 
 # Shape complementarity score
 # S_shape = clip((weight_depth * Sd + weight_tau * S_tau + 1) / 2, 0, 1)
 scoring:
-  weight_depth: 0.7      # depth anti-correlation component
-  weight_tau:   0.3      # backbone torsion co-correlation component
+  weight_depth: 0.7      # Weight for depth anti-correlation component (Sd)
+  weight_tau: 0.3        # Weight for backbone torsion co-correlation (S_tau)
 
 # Final ranking score
 # S_final = weight_rmsd * 1/(1+RMSD) + weight_shape * S_shape
 ranking:
-  weight_rmsd:  0.4      # structural similarity term
-  weight_shape: 0.6      # shape complementarity term
+  weight_rmsd: 0.4       # Weight for structural similarity (RMSD) term
+  weight_shape: 0.6      # Weight for shape complementarity term
+
+max_workers: 6
 ```
 
 ### Per-call override
@@ -200,29 +203,3 @@ hits = epifitscout.search(
 
 ---
 
-## Project Structure
-
-```
-EpiFitScout/
-├── conf/
-│   └── config.yaml             ← all hyperparameters
-├── data/
-│   ├── SAbDab/
-│   │   └── sabdab_metadata.csv ← SAbDab source (download separately)
-│   ├── rcsb_cache/             ← cached PDB downloads (auto-created)
-│   └── sabdab_chains.db/       ← built chain database (auto-created)
-├── epifitscout/                ← Python package
-│   ├── __init__.py             ← search(), config_from_yaml(), QueryBuilder
-│   ├── config/schema.py        ← PipelineConfig, ScoringConfig, RankingConfig
-│   ├── db/                     ← database construction
-│   ├── master/                 ← MASTER subprocess wrapper
-│   ├── pipeline/               ← 3-step search pipeline
-│   ├── scoring/shape.py        ← shape complementarity scorer
-│   ├── ranking/                ← hit ranker
-│   └── types/                  ← Fragment, ScoredHit dataclasses
-├── MASTER/
-│   └── master-v1.6/bin/        ← place compiled binaries here
-├── run/
-│   └── build_chain_db.py       ← database build script
-└── pyproject.toml
-```
