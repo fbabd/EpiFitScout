@@ -30,6 +30,9 @@ dependencies = [
     "pyyaml>=6.0",
 ]
 
+[project.scripts]
+epifitscout = "epifitscout.cli:main"
+
 [project.optional-dependencies]
 # Dependencies of example/ and the tutorial notebook only.
 examples = [
@@ -104,6 +107,8 @@ module = [
     "epifitscout.scoring.shape",
     "epifitscout.types.superposition",
     "epifitscout.types.fragment",
+    "epifitscout.tools.build_complex",
+    "epifitscout.tools.visualize_fit",
 ]
 disable_error_code = ["no-any-return", "no-untyped-call", "type-arg", "attr-defined"]
 

@@ -37,7 +37,7 @@ side chain driven into the antigen.
 
 Example::
 
-    python tools/build_complex.py \\
+    epifitscout build \\
         --structure database_builder/rcsb_cache/3gbn.pdb \\
         --cdr H 93 102 --epitope B 38 46 \\
         --top 5 --side-chains native --out-dir ../grafts
@@ -51,21 +51,20 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
-import epifitscout  # noqa: E402
-from epifitscout.config.schema import MASTERConfig, PipelineConfig  # noqa: E402
-from epifitscout.db.rcsb_downloader import RcsbDownloader  # noqa: E402
-from epifitscout.pipeline.search_pipeline import FragmentSearchPipeline  # noqa: E402
-from epifitscout.types.fragment import ScoredHit  # noqa: E402
-from epifitscout.utils.geometry import kabsch_superpose  # noqa: E402
-from epifitscout.utils.io import detect_format, extract_residue_atoms  # noqa: E402
+import epifitscout
+from epifitscout.config.schema import MASTERConfig, PipelineConfig
+from epifitscout.db.rcsb_downloader import RcsbDownloader
+from epifitscout.paths import REPO_ROOT
+from epifitscout.pipeline.search_pipeline import FragmentSearchPipeline
+from epifitscout.types.fragment import ScoredHit
+from epifitscout.utils.geometry import kabsch_superpose
+from epifitscout.utils.io import detect_format, extract_residue_atoms
 
 BACKBONE = ("N", "CA", "C", "O")
 #: Ideal peptide bond length; used to judge whether the graft joins the framework.
@@ -287,7 +286,8 @@ def _merge_heteroatoms(
 
     dropped, overlapping = 0, []
     if graft is not None and len(graft):
-        keep, by_residue = [], {}
+        keep: list[str] = []
+        by_residue: dict[tuple[str, int, str], list[str]] = {}
         for line in het:
             by_residue.setdefault(_atom_key(line), []).append(line)
         for key, lines in by_residue.items():
@@ -549,6 +549,27 @@ def _element(line: str) -> str:
     return symbol if symbol else line[12:16].strip().lstrip("0123456789")[:1].upper()
 
 
+def _summarise_residues(numbers: Sequence[int], limit: int = 6) -> str:
+    """Condense residue numbers to ranges, so a detected epitope is reviewable.
+
+    A proximity-detected epitope is not a contiguous span, and printing 20 bare
+    numbers hides whether the selection is sensible. "38-46, 92, 135-137" does
+    not.
+    """
+    if not numbers:
+        return "none"
+    runs: list[list[int]] = [[numbers[0], numbers[0]]]
+    for n in sorted(numbers)[1:]:
+        if n == runs[-1][1] + 1:
+            runs[-1][1] = n
+        else:
+            runs.append([n, n])
+    parts = [str(a) if a == b else f"{a}-{b}" for a, b in runs]
+    if len(parts) > limit:
+        return ", ".join(parts[:limit]) + f", +{len(parts) - limit} more"
+    return ", ".join(parts)
+
+
 def closest_contact(
     pdb: Path, chain: str, span: tuple[int, int], ag_chain: str
 ) -> tuple[float, str | None]:
@@ -628,7 +649,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--structure", type=Path, required=True,
                    help="Template antibody-antigen complex.")
     p.add_argument("--cdr", nargs=3, metavar=("CHAIN", "FIRST", "LAST"), required=True)
-    p.add_argument("--epitope", nargs=3, metavar=("CHAIN", "FIRST", "LAST"), required=True)
+    p.add_argument("--epitope", nargs=3, metavar=("CHAIN", "FIRST", "LAST"),
+                   help="The epitope residue range. Omit it to take every "
+                        "residue of --antigen-chain within --epitope-cutoff of "
+                        "the CDR instead.")
+    p.add_argument("--antigen-chain", metavar="CHAIN",
+                   help="Antigen chain to find the epitope on, when --epitope "
+                        "is not given.")
+    p.add_argument("--epitope-cutoff", type=float, default=10.0, metavar="A",
+                   help="Proximity used to detect the epitope (default 10 A).")
     p.add_argument("--out-dir", type=Path, required=True)
     p.add_argument("--top", type=int, default=10, help="How many hits to build.")
     p.add_argument("--include-self", action="store_true",
@@ -651,7 +680,14 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     ab_chain, lo, hi = args.cdr[0], int(args.cdr[1]), int(args.cdr[2])
-    ag_chain, elo, ehi = args.epitope[0], int(args.epitope[1]), int(args.epitope[2])
+    if args.epitope:
+        ag_chain = args.epitope[0]
+        span: tuple[int, int] | None = (int(args.epitope[1]), int(args.epitope[2]))
+    elif args.antigen_chain:
+        ag_chain, span = args.antigen_chain, None
+    else:
+        p.error("give either --epitope CHAIN FIRST LAST, or --antigen-chain "
+                "CHAIN to detect the epitope by proximity to the CDR")
 
     packer_exe = None
     if args.side_chains == "packed":
@@ -677,9 +713,15 @@ def main(argv: list[str] | None = None) -> int:
 
     qb = epifitscout.QueryBuilder(args.structure)
     cdr = qb.get_fragment(ab_chain, lo, hi)
-    epitope = qb.get_epitope_surface(ag_chain, residues=(elo, ehi))
+    if span is not None:
+        epitope = qb.get_epitope_surface(ag_chain, residues=span)
+        where = f"{ag_chain}/{span[0]}-{span[1]}"
+    else:
+        epitope = qb.get_epitope_surface(ag_chain, near=cdr, cutoff=args.epitope_cutoff)
+        where = (f"{ag_chain}, within {args.epitope_cutoff:g} A of the CDR: "
+                 f"{_summarise_residues(epitope.residue_numbers)}")
     print(f"template {args.structure.name}: CDR {ab_chain}/{lo}-{hi} ({cdr.length} residues), "
-          f"epitope {ag_chain}/{elo}-{ehi} ({epitope.n_residues} residues), "
+          f"epitope {where} ({epitope.n_residues} residues), "
           f"reach {qb.epitope_reach(cdr, epitope):.1f} A")
 
     body = np.concatenate(

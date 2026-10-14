@@ -34,8 +34,12 @@ with step-by-step instructions:
 | **MASTER** binaries (`master-bin-v1.6.tar.gz`) | [`MASTER/`](MASTER/README.md) (becomes `MASTER/bin/`) | download, `tar -xzf … -C MASTER/`, `chmod +x` |
 | **Dataset** (`epifitscout-database-v*.tar.xz`) | [`data/`](data/README.md) | download, `tar -xJf … -C data/` |
 
+> ⚠️ **The dataset is not on Zenodo yet.** Until the deposit is live, build it
+> with [`database_builder/`](database_builder/README.md) — it pulls from SAbDab
+> and RCSB and produces the same layout, taking a few hours, mostly download.
+
 One more is optional, and only for side-chain packing in
-`tools/build_complex.py`:
+`epifitscout build`:
 
 | | Put it in | Instructions |
 |---|---|---|
@@ -44,7 +48,7 @@ One more is optional, and only for side-chain packing in
 Then check:
 
 ```bash
-python check_setup.py --search
+epifitscout check --search        # or: python check_setup.py --search
 ```
 
 ```
@@ -118,23 +122,35 @@ Step 1 (MASTER) retrieves loops with a similar backbone. Step 2 then **grafts**
 each one onto the CDR site, so it sits in the antibody-antigen frame where your
 loop was, and judges it there:
 
-- a candidate whose backbone comes closer than 2.5 Å to the antigen is
-  **rejected** — no native structure in the calibration set approaches closer
-  than 2.6 Å;
+- a candidate whose backbone comes closer than 2.0 Å to the antigen is
+  **rejected**, a cutoff calibrated on 86 native complexes in which the closest
+  any native CDR backbone comes to its antigen is 2.12 Å (an earlier 2.5 Å
+  cutoff, set from only five complexes, rejected 12% of those natives);
 - the remaining ones are scored by how long a stretch of the loop makes clean
   contact: `contact quality × (matched length / loop length)`;
 - each hit reports **which** of its residues matched **which** epitope residues,
   so you can check any result yourself (`h.local_fit.describe()`, or
-  `tools/visualize_fit.py` to view it in PyMOL).
+  `epifitscout view` to view it in PyMOL).
 
 Step 3 ranks by `0.4 × 1/(1+RMSD) + 0.6 × shape`.
 
 **Read the scores as a way to generate candidates, not as predicted affinity.**
-The weights are not fitted to binding data, and validation rests on five
-literature complexes. The native loop ranks first in all five, but with only a
-handful of cases and no measured affinities that is encouraging rather than
-conclusive. See [`benchmark/`](benchmark/README.md) and
-[`REPORT.md`](REPORT.md).
+The weights are not fitted to binding data. What has been measured, on 102
+antibody–antigen complexes drawn from SAbDab:
+
+| Question | Result |
+|---|---|
+| Does the geometric step add anything MASTER lacks? | 14.9% of 40,724 hits collide with the antigen; RMSD predicts which only weakly (median AUC 0.559, p = 0.0012) |
+| Does the score prefer the real epitope? | true site beats the mean reachable decoy in **55/55** complexes (p = 5.5e-11, d = 2.71) |
+| Is the native loop recovered? | median 71st percentile among non-self hits, vs 51st for the superseded scorer (p = 4.4e-07) |
+| Does it track binding energy? | ρ = −0.326 (p = 0.0045) against SAbDab ΔG on 74 complexes |
+
+So the geometry carries real information about the epitope, and more than RMSD
+alone does — but a shape term is not an affinity predictor, and the correlation
+with ΔG is weak. What is *not* yet measured is whether epitope-aware ranking
+produces better antibodies than conformation-only ranking; that comparison is
+the open question, not a settled result. See [`benchmark/`](benchmark/README.md)
+and [`REPORT.md`](REPORT.md).
 
 ### Hit fields
 
@@ -166,15 +182,19 @@ conclusive. See [`benchmark/`](benchmark/README.md) and
 
 A search returns ranked *fragments*. To get structures — the template complex
 with its CDR replaced by each hit, antigen included — use
-[`tools/build_complex.py`](tools/build_complex.py):
+[`epifitscout build`](epifitscout/tools/build_complex.py):
 
 ```bash
-python tools/build_complex.py \
+epifitscout build \
     --structure my_complex.pdb \
     --cdr H 93 102 --epitope B 38 46 \
     --top 5 --side-chains packed \
     --out-dir grafts
 ```
+
+Give `--antigen-chain B` instead of `--epitope` and the epitope is taken to be
+every residue of that chain within `--epitope-cutoff` (10 Å) of the CDR; the
+residues chosen are printed so you can check them.
 
 | `--side-chains` | What you get | Needs |
 |---|---|---|

@@ -1,6 +1,6 @@
 # FASPR goes in this folder
 
-Only needed for `tools/build_complex.py --side-chains packed`. Everything else
+Only needed for `epifitscout build --side-chains packed`. Everything else
 in EpiFitScout works without it. FASPR is the recommended packer: one small C++
 program, no registration, under a second per complex.
 

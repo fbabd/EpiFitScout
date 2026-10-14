@@ -1,6 +1,6 @@
 """Assembling a grafted antibody-antigen complex.
 
-``search()`` returns ranked fragments; ``tools/build_complex.py`` turns them into
+``search()`` returns ranked fragments; ``epifitscout build`` turns them into
 structures. The properties worth pinning are structural, not cosmetic: the
 antigen must survive untouched, the antibody must stay complete, the graft must
 not introduce a chain break, and the loop must take the template's own residue
@@ -9,8 +9,6 @@ identifiers so insertion-coded CDR numbering survives.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -20,20 +18,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = REPO_ROOT / "database_builder/rcsb_cache/3gbn.pdb"
 
 
-def _module():
-    spec = importlib.util.spec_from_file_location(
-        "build_complex", REPO_ROOT / "tools/build_complex.py"
-    )
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules["build_complex"] = mod
-    spec.loader.exec_module(mod)
-    return mod
-
-
 @pytest.fixture(scope="module")
 def bc():
-    return _module()
+    """The tool as an ordinary package module, which is how users get it."""
+    from epifitscout.tools import build_complex
+
+    return build_complex
 
 
 class TestPackerHandling:

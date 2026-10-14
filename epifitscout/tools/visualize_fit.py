@@ -12,7 +12,7 @@ should sit against the epitope without passing through it.
 
 Example::
 
-    python tools/visualize_fit.py \\
+    epifitscout view \\
         --structure database_builder/rcsb_cache/3gbn.pdb \\
         --cdr H 93 102 --epitope B 38 46 \\
         --out-dir /tmp/fit_3gbn
@@ -27,15 +27,14 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-
-import epifitscout  # noqa: E402
-from epifitscout.config.schema import MASTERConfig, PipelineConfig  # noqa: E402
-from epifitscout.pipeline.search_pipeline import FragmentSearchPipeline  # noqa: E402
-from epifitscout.scoring.local_fit import LocalFitScorer  # noqa: E402
-from epifitscout.scoring.shape import ShapeComplementarityScorer  # noqa: E402
-from epifitscout.utils.io import (  # noqa: E402
+import epifitscout
+from epifitscout.config.schema import MASTERConfig, PipelineConfig
+from epifitscout.pipeline.search_pipeline import FragmentSearchPipeline
+from epifitscout.scoring.local_fit import LocalFitScorer
+from epifitscout.scoring.shape import ShapeComplementarityScorer
+from epifitscout.types.fragment import Fragment
+from epifitscout.types.superposition import Superposition
+from epifitscout.utils.io import (
     extract_residue_atoms,
     fragment_to_pdb_string,
 )
@@ -104,7 +103,9 @@ print "Toggle with:  disable old_pick   /   enable old_pick"
 """
 
 
-def _write_grafted(frag, superposition, path: Path, chain: str) -> None:
+def _write_grafted(
+    frag: Fragment, superposition: Superposition, path: Path, chain: str
+) -> None:
     """Write a grafted fragment, in the antibody-antigen frame, as a PDB."""
     grafted = superposition.apply(frag.coords)
     path.write_text(

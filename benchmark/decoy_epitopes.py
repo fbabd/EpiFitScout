@@ -30,6 +30,8 @@ from scipy.spatial.distance import cdist
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from analyse_benchmark import read_records  # noqa: E402
+
 import epifitscout  # noqa: E402
 from epifitscout.scoring.local_fit import LocalFitScorer  # noqa: E402
 from epifitscout.types.epitope import EpitopeSurface  # noqa: E402
@@ -90,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args(argv)
 
-    records = [json.loads(line) for line in args.records.read_text().splitlines() if line.strip()]
+    records = read_records(args.records)
     records = [r for r in records if "error" not in r]
     rng = np.random.default_rng(args.seed)
     scorer = LocalFitScorer()

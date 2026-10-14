@@ -25,8 +25,32 @@ import numpy as np
 from scipy import stats
 
 
+def read_records(path: Path) -> list[dict]:
+    """Read a JSONL run, transparently handling ``.xz``.
+
+    The committed runs are xz-compressed: the hit lists are 40k entries and
+    compress to 7% of their size, which keeps a clone small. A plain ``.jsonl``
+    beside the archive is preferred if present, so a fresh local run is picked
+    up without recompressing it.
+    """
+    if path.suffix == ".xz":
+        plain = path.with_suffix("")
+        if plain.is_file():
+            path = plain
+    elif not path.is_file() and path.with_suffix(path.suffix + ".xz").is_file():
+        path = path.with_suffix(path.suffix + ".xz")
+
+    if path.suffix == ".xz":
+        import lzma
+
+        text = lzma.open(path, "rt").read()
+    else:
+        text = path.read_text()
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 def load(path: Path) -> list[dict]:
-    records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    records = read_records(path)
     good = [r for r in records if "error" not in r]
     skipped = len(records) - len(good)
     print(f"{len(good)} complexes analysed ({skipped} skipped during the run)\n")

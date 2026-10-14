@@ -2,7 +2,7 @@
 
 **A methods report on the retrieval pipeline, its scoring algorithms, and its use**
 
-Status: as of 2026-10-05 · Source tree: `EpiFitScout/` · Version `0.1.0`
+Status: as of 2026-10-14 · Version `0.1.0`
 
 ---
 
@@ -10,42 +10,47 @@ Status: as of 2026-10-05 · Source tree: `EpiFitScout/` · Version `0.1.0`
 
 EpiFitScout retrieves antibody CDR fragments that are at once similar in backbone
 conformation to a query loop and geometrically complementary to a nominated epitope
-surface. The user supplies a bound complex and names two fragments within it — a CDR
-loop and the epitope residues it contacts. The tool searches a chain database built
-from SAbDab (25,226 variable-domain chains in the installed build) and returns a
-ranked hypothesis list.
+surface, then grafts the best of them back into the template to give candidate
+antibodies. The user supplies a bound complex and names a CDR loop within it, along
+with either explicit epitope residues or an antigen chain whose residues within 10 Å
+of the loop are taken as the epitope. The tool searches a chain database built from
+SAbDab (25,226 variable-domain chains in the installed build) and returns a ranked
+hypothesis list.
 
 Retrieval proceeds in three stages. **MASTER** performs an exact backbone-RMSD search
 with a sliding window over full chains, yielding fragments whose conformation matches
-the query. A **shape complementarity scorer** then evaluates each hit against the query
-epitope, combining the anti-correlation of interface depth profiles with the
-co-correlation of Frenet–Serret backbone torsion. A **ranker** finally merges
-conformational similarity and complementarity into a single score:
-
-$$
-S_{\text{shape}} = \mathrm{clip}\!\left(\frac{w_d S_d + w_\tau S_\tau + 1}{2},\; 0,\; 1\right)
-$$
+the query. Each hit is then **superposed into the antibody–antigen frame**, placing it
+where the query loop sat, and a **local shape fit** asks how long a stretch of it makes
+clean contact with the epitope — a lock-and-key reading rather than a global surface
+correlation. A **ranker** merges conformational similarity and complementarity:
 
 $$
 S_{\text{final}} = w_{\text{rmsd}}\,\frac{1}{1 + \mathrm{RMSD}} \;+\; w_{\text{shape}}\, S_{\text{shape}}
 $$
 
-With default weights the ranking is 60% complementarity and 40% backbone match, and the
-complementarity term is itself 70% depth and 30% torsion. The design intent is that
-MASTER supplies conformational plausibility while the shape score supplies epitope
-specificity, since MASTER itself never sees the epitope.
+with default weights 40% backbone match and 60% complementarity. The design intent is
+that MASTER supplies conformational plausibility while the shape score supplies epitope
+specificity, since MASTER itself never sees the epitope. `epifitscout build` then writes
+complete complexes, with side chains either carried over from the fragment's own entry
+or rebuilt with FASPR.
 
-> **Status of the scoring.** Step 2 has been replaced. The original scorer correlated
-> whole-length depth and torsion profiles; it scored hits in their own crystal frame,
+On 102 SAbDab complexes: 14.9% of 40,724 hits cannot be placed without colliding with
+the antigen and RMSD predicts which only weakly (median AUC 0.559, p = 0.0012); the
+score prefers the true epitope over reachable decoys in 55/55 complexes
+(p = 5.5 × 10⁻¹¹, d = 2.71); the native loop lands at the median 71st percentile of
+hits, against the 51st for the superseded scorer (p = 4.4 × 10⁻⁷); and the score
+correlates weakly with ΔG (ρ = −0.326, p = 0.0045, n = 74). [§6.4](#64-validation)
+gives these in full, and [§11](#11-limitations-and-future-directions) states plainly
+what they do not show — in particular that epitope-aware ranking has **not** been shown
+to produce better antibodies than conformation-only ranking.
+
+> **An earlier scorer was replaced.** Versions up to v0.1.0 correlated whole-length
+> depth and torsion profiles. That scorer scored hits in their own crystal frame,
 > inverted the sign of the depth term, depended on which end of the epitope was listed
-> first, and could not reject a candidate that physically collided with the antigen. It
-> is superseded by a local shape fit ([§6](#6-stage--shape-complementarity-scoring)) and
-> retained only to reproduce published benchmark numbers.
-> [§10](#10-implementation-caveat--the-superposition-frame)
-> records what was wrong, the fix, how it was validated, and — importantly — what the
-> benchmark does *not* show: the corrected shape score does not single out the native
-> loop, and its weights are unvalidated. Readers interpreting `complementarity_score`
-> should read §10.4 and §11.
+> first, and could not reject a candidate that physically collided with the antigen.
+> [§6.5](#65-the-superseded-profile-scorer) records what it did and why it went, and
+> [§10](#10-implementation-caveat--the-superposition-frame) documents the frame bug in
+> detail. The code is retained only so published benchmark numbers remain reproducible.
 
 ---
 
@@ -68,9 +73,11 @@ each MASTER hit it asks a geometric question — does this loop's surface profil
 *interlock* with the epitope's? — and combines the answer with the RMSD so that final
 rank reflects both conformational plausibility and epitope fit.
 
-The complementarity model is deliberately coarse. It uses backbone α-carbons only, and
-it tests two geometric signatures rather than computing buried surface area or an
-energy. The two signatures are described in [§6](#6-stage-2--shape-complementarity-scoring).
+The complementarity model is deliberately coarse. Fragments carry backbone atoms only,
+and it asks where along the epitope a loop makes clean contact and over how long a
+stretch, rather than computing buried surface area or an energy. The method is described
+in §6, and the earlier profile-correlation scorer it replaced in
+[§6.5](#65-the-superseded-profile-scorer).
 
 ---
 
@@ -99,9 +106,9 @@ energy. The two signatures are described in [§6](#6-stage-2--shape-complementar
          │                                 ▼
          │                      hits: (Fragment, Superposition, RMSD)
          │                                 │
-         └────────────────▶ ② shape complementarity scoring
-                              depth anti-correlation  (w=0.7)
-                              torsion co-correlation  (w=0.3)
+         └────────────────▶ ② graft into the Ab-Ag frame,
+                                 then local shape fit:
+                              longest clash-free contact run
                                            │
                                            ▼
                             ③ ranking: 0.4·1/(1+RMSD) + 0.6·S_shape
@@ -115,7 +122,7 @@ energy. The two signatures are described in [§6](#6-stage-2--shape-complementar
 | Stage | Module | Input | Output |
 |---|---|---|---|
 | ① Structural search | `master/runner.py`, `master/parser.py` | query CDR `Fragment` | `(Fragment, Superposition, rmsd)` per hit |
-| ② Complementarity | `scoring/shape.py` | hit coords + query epitope | `S_shape` ∈ [0, 1] per hit |
+| ② Complementarity | `scoring/local_fit.py` | grafted hit coords + query epitope | `S_shape` ∈ [0, 1] per hit, plus a `LocalFit` record |
 | ③ Ranking | `ranking/ranker.py` | hits + RMSDs | `list[ScoredHit]` sorted by `final_score` |
 
 Orchestration lives in `pipeline/search_pipeline.py` (`FragmentSearchPipeline`), which
@@ -369,198 +376,121 @@ actually achieved by the superposition is in `fragment.metadata["superposed_rmsd
 
 ---
 
-## 6. Stage ② — shape complementarity scoring
+## 6. Stage ② — local shape fit
 
-This is the tool's distinctive algorithmic content, implemented as
-`ShapeComplementarityScorer` in `scoring/shape.py`. It consumes a hit's coordinates and
-the query epitope's coordinates and returns a single scalar in [0, 1].
+Implemented as `LocalFitScorer` in `scoring/local_fit.py`. It answers a deliberately
+narrow question: **where along the epitope does this loop fit, and over how long a
+stretch?** That is the lock-and-key reading — a loop that meshes with part of a surface
+is a candidate even if the rest of it points away.
 
-Both components operate on **CA atoms only** (`_get_ca` collapses `(N, 4, 3)` → `(N, 3)`)
-and both return a value in [−1, 1] before weighting. The scorer returns `0.0`
-immediately if either fragment has fewer than 4 residues.
+### 6.1 Inputs
 
-### 6.1 Component 1 — depth-profile anti-correlation (weight 0.7)
+Each MASTER hit is first *grafted*: the Kabsch transform of [§10](#10-implementation-caveat--the-superposition-frame)
+lays it onto the CDR site, so it occupies the antibody–antigen frame where the template
+loop was. Measured on 1A2Y, this moves fragments from a median of 68 Å (up to 421 Å)
+from the epitope to 7.0 Å, against the template loop's own 6.9 Å. Scoring an ungrafted
+hit in its own crystal frame is the bug described in §10.
 
-The underlying claim is the hand-in-glove intuition made quantitative: **where the loop
-protrudes toward the epitope, a complementary epitope is recessed**, and vice versa.
-Measured as 1-D profiles along a common axis, complementary surfaces are therefore
-*anti-correlated*.
-
-**Step 1 — the interface normal.** Take the centroid-to-centroid direction
-
-$$
-\hat{n}_{0} = \frac{\bar{c}_{\text{epi}} - \bar{c}_{\text{cdr}}}{\lVert \bar{c}_{\text{epi}} - \bar{c}_{\text{cdr}} \rVert}
-$$
-
-**Step 2 — backbone correction.** A loop that extends partly *along* the approach
-direction would contaminate the depth signal with its own lateral extent. So the CDR's
-principal axis $\hat{b}$ (first right-singular vector from SVD of the centred CDR CAs)
-is projected out:
-
-$$
-\hat{n} = \frac{\hat{n}_{0} - (\hat{n}_{0}\cdot\hat{b})\,\hat{b}}{\lVert \hat{n}_{0} - (\hat{n}_{0}\cdot\hat{b})\,\hat{b} \rVert}
-$$
-
-A subtle and well-commented detail: the SVD uses **the CDR alone, never CDR+epitope
-combined**. In a well-separated pair the interface direction itself dominates the
-combined variance, so a combined SVD would identify the approach axis as the "backbone
-direction" and delete exactly the signal being measured. If the correction collapses
-$\hat{n}$ (the loop runs end-on at the epitope), the code falls back to the uncorrected
-$\hat{n}_0$.
-
-**Step 3 — projection and centring.** Project each CA onto $\hat{n}$ and remove the
-mean, since only profile shape matters, not absolute offset:
-
-$$
-d^{\text{cdr}}_i = \mathbf{x}^{\text{cdr}}_i \cdot \hat{n} - \overline{\mathbf{x}^{\text{cdr}} \cdot \hat{n}},
-\qquad
-d^{\text{epi}}_j = \mathbf{x}^{\text{epi}}_j \cdot \hat{n} - \overline{\mathbf{x}^{\text{epi}} \cdot \hat{n}}
-$$
-
-**Step 4 — length alignment.** The two profiles generally differ in length. `_interp_align`
-resamples both to `max(N, M)` by linear interpolation over a normalised parameter, so
-0% along one maps to 0% along the other (N-terminus to N-terminus).
-
-**Step 5 — score.**
-
-$$
-S_d = -\,\mathrm{pearson}\!\left(d^{\text{cdr}}, d^{\text{epi}}\right)
-$$
-
-The negation is the whole point: anti-correlation is complementarity.
-
-> **Why not DTW.** Dynamic time warping was implemented but deliberately
-> *not* used by the scorer, and the reason is recorded in the module docstring: DTW
-> minimises paired distance, so it aligns CDR peaks with epitope **troughs** — points of
-> equal *value* — rather than points at equal *relative position*. That destroys the very
-> anti-correlation the score depended on. It has since been removed, along with the
-whole index-to-index correspondence it belonged to: the local fit matches each loop
-residue to its own nearest epitope residue and needs no alignment at all.
-
-### 6.2 Component 2 — backbone torsion co-correlation (weight 0.3)
-
-The second claim is that loops maintaining contact along their length tend to share a
-similar 3D twist and handedness.
-
-**Smoothing.** `_smooth_ca` applies a 3-point moving average to the CA trace
-(endpoints unchanged) to stabilise the second-difference quantities below.
-
-**Discrete Frenet–Serret torsion.** For the smoothed trace, with segment vectors
-$\Delta_i = \mathbf{x}_{i+1} - \mathbf{x}_i$:
-
-$$
-\hat{T}_i = \frac{\Delta_i}{\lVert\Delta_i\rVert}, \qquad
-\hat{B}_i = \frac{\hat{T}_i \times \hat{T}_{i+1}}{\lVert \hat{T}_i \times \hat{T}_{i+1}\rVert}, \qquad
-\hat{N}_i = \frac{\hat{T}_{i+1} - \hat{T}_i}{\lVert \hat{T}_{i+1} - \hat{T}_i \rVert}
-$$
-
-$$
-\tau_i = -\,\frac{\left(\hat{B}_{i+1} - \hat{B}_i\right)\cdot \hat{N}_i}{\bar{s}_i}
-$$
-
-where $\bar{s}_i$ is the local mean segment length. A trace of $N$ residues yields
-$N-3$ torsion values; fewer than 4 residues raises `ValueError`, caught by the scorer.
-All norms are floored at `1e-8` against division by zero.
-
-**Why torsion.** $\tau$ is **frame-independent** — invariant under rotation and
-translation — so it characterises intrinsic 3D shape without reference to any shared
-coordinate system. This is why it was unaffected by the frame defect recorded in
-[§10](#10-implementation-caveat--the-superposition-frame).
-
-**Planar guard.** If $\max|\tau| < 10^{-4}$ the profile is returned as exact zeros.
-A near-planar loop has torsion that is numerically pure noise, and correlating noise
-would yield a misleading $r$. `_pearson` independently returns `0.0` for any constant
-signal (σ < 1e-8) or series shorter than 2.
-
-**Score.** After the same linear-interpolation alignment:
-
-$$
-S_\tau = +\,\mathrm{pearson}\!\left(\tau^{\text{cdr}}, \tau^{\text{epi}}\right)
-$$
-
-Positive here: similar twist is the favourable case.
-
-### 6.3 Combination
-
-$$
-\text{raw} = w_d S_d + w_\tau S_\tau \;\in [-1, 1], \qquad
-S_{\text{shape}} = \mathrm{clip}\!\left(\frac{\text{raw}+1}{2},\, 0,\, 1\right)
-$$
-
-Defaults $w_d = 0.7$, $w_\tau = 0.3$ (`ScoringConfig`). An uninformative hit lands near
-0.5, not 0 — worth remembering when reading raw scores.
-
----
-
-## 6A. Stage ② as built — local shape fit
-
-The profile scorer in §6 is superseded. What runs now answers a different, narrower
-question: **where along the epitope does this loop fit, and over how long a stretch?**
-
-### 6A.1 Inputs
-
-Each MASTER hit is first *grafted*: the Kabsch transform of §10 lays it onto the CDR
-site, so it occupies the antibody-antigen frame where the template loop was. Measured
-on 1A2Y, this moves fragments from a median of 68 Å (up to 421 Å) from the epitope to
-7.0 Å, against the template loop's own 6.9 Å.
-
-The epitope is an `EpitopeSurface`: the antigen residues **the user names**, with every
-atom including side chains. It need not be in contact with the template's CDR — a design
-search commonly targets an epitope the template antibody does not engage. The earlier
-`get_surface_patch` took a sequence window (`centre ± 8`) and selected by residue number,
-which on the benchmark complexes put most of the patch 10-19 Å away with only 1-2 loop
-residues in contact; it is deprecated.
+The epitope is an `EpitopeSurface`: antigen residues with every atom, side chains
+included, either **named by the user** or detected as those within a cutoff (10 Å by
+default) of the CDR. It need not be in contact with the template's CDR — a design search
+commonly targets an epitope the template antibody does not engage.
 
 Fragments carry **backbone atoms only** — the chain database discards side chains at
 build time — so every distance is fragment backbone to antigen heavy atom.
 
-### 6A.2 Method
+### 6.2 Method
 
-1. For each loop residue, the distance to its nearest antigen atom, and which residue
-   that is. Each residue finds its own partner, so no correspondence between loop and
-   epitope is assumed; the result is unchanged by reversing the epitope's residue order.
-2. Classify: **collision** below 2.5 Å, **contact** out to 8.0 Å.
+1. For each loop residue, find the distance to its nearest antigen atom, and which
+   residue that is. Each residue finds its own partner, so no correspondence between
+   loop and epitope is assumed, and the result is unchanged by reversing the epitope's
+   residue order.
+2. Classify: **collision** below 2.0 Å, **contact** out to 8.0 Å.
 3. Find the longest run of consecutive residues in contact with no collision. This is
    the "slide": the run tracks along the surface wherever it goes.
 4. Score `contact_quality × (matched_length / loop_length)`, and **zero if anything
    collides** — so step 2 both filters and ranks.
 
-### 6A.3 Calibration
+`LocalFit` reports the matched span, its partner epitope residues, the per-residue gaps,
+the clash count and the contact quality, so any score can be audited
+(`h.local_fit.describe()`, or `epifitscout view` for a PyMOL session).
 
-Thresholds come from the five native complexes, not assertion. Over 84 native CDR
-residues, backbone-to-antigen distance: closest approach ever observed **2.6 Å**,
-p25 5.0 Å, median 7.7 Å; 36% within 6 Å, 52% within 8 Å. Hence collision below 2.5 Å
-and contact to 8 Å, and hence the expectation that a native matches roughly half its
-loop, not all of it.
+### 6.3 Calibration
 
-### 6A.4 What it changed
+Thresholds come from native complexes, not assertion. Across 86 native
+antibody–antigen complexes the closest any native CDR backbone comes to its antigen is
+**2.12 Å**; the per-residue median gap is 5.89 Å and the p25 is 4.19 Å. Hence collision
+below 2.0 Å, an ideal-gap window centred in the 4–6 Å band, and contact out to 8 Å —
+and hence the expectation that a native matches roughly half its loop, not all of it.
 
-| | profile scorer | local fit |
-|---|---|---|
-| Perfect synthetic nest | 0.150 | **0.481** |
-| Synthetic collision | 0.850 | **0.000** (rejected) |
-| Native shape percentile, 1A2Y / 3GBN / 3NGB / 2NY7 | 50 / 35 / — / — | **74 / 35 / 78 / 95** |
-| Candidates rejected for colliding | none possible | 15-101 per case |
-| 3GBN top-ranked non-self hit | 7WE9:C, collides at 2.4 Å | 7UZ5:H, 0 collisions, 7 residues matched |
+An earlier 2.5 Å collision cutoff, set from only five complexes, rejected 12% of those
+86 natives. A threshold that discards an eighth of real interfaces is measuring
+crystallographic variation, not collisions; `TestCalibration` pins the current value
+against the measured distribution so it cannot drift back.
 
-On 3GBN three of the profile scorer's top ten physically collide with the antigen; on
-2NY7, four of ten. `tools/visualize_fit.py` exports any of this for PyMOL.
+### 6.4 Validation
 
-### 6A.5 Limits
+Measured on 102 SAbDab complexes; see [`benchmark/`](benchmark/README.md) for method and
+reproduction.
+
+| Question | Result |
+|---|---|
+| **Q1.** Does the step add anything MASTER lacks? | 14.9% of 40,724 hits collide with the antigen. RMSD predicts which only weakly: median AUC 0.559 over 76 complexes (IQR 0.472–0.689), Wilcoxon vs 0.5 p = 0.00119. Tightening the RMSD cut to 1.0 Å keeps 32.7% of hits of which 6.0% still collide, so it is a poor substitute. |
+| **Q2.** Real complementarity, or proximity? | Against reachable decoy patches on the same antigen (same size, <25% residue overlap, equally reachable): true 0.537 vs decoy mean 0.260, best decoy 0.326. True wins **55/55** (p = 5.54 × 10⁻¹¹, d = 2.71) and 54/55 against the best decoy. Decoys score 0.260, not zero, so this compares fit quality rather than reachability. |
+| **Q3.** Is the native loop recovered? | Median 71st percentile among non-self hits (IQR 46–89), above the 50th in 73/102 complexes, Wilcoxon p = 4.43 × 10⁻⁷. The superseded profile scorer on the same cases: median 51st percentile — chance. |
+| **Q4.** Does it track binding energy? | ρ = −0.326 (p = 0.00454) against SAbDab ΔG on 74 complexes, −15.7 to −5.0 kcal/mol. Weak, and reported so the claim is not overstated either way. |
+
+Q3 is the comparison that justifies the method change; Q2 is the one that shows the
+geometry is about the epitope rather than mere contact. Q4 is not an affinity claim.
+
+### 6.5 The superseded profile scorer
+
+`ShapeComplementarityScorer` in `scoring/shape.py` implemented the original method and
+is retained **only** so published benchmark numbers remain reproducible. It combined two
+whole-length profile correlations,
+
+$$
+S_{\text{shape}} = \mathrm{clip}\!\left(\frac{w_d S_d + w_\tau S_\tau + 1}{2},\; 0,\; 1\right),
+\qquad w_d = 0.7,\; w_\tau = 0.3
+$$
+
+where $S_d$ was the Pearson anti-correlation of interface **depth** profiles projected
+on a centroid-to-centroid normal — the hand-in-glove intuition, that where the loop
+protrudes a complementary epitope is recessed — and $S_\tau$ the co-correlation of
+Frenet–Serret backbone **torsion**. Both used CA atoms only.
+
+It was replaced because it was wrong in four independent ways:
+
+- it scored each hit **in its own crystal frame**, never placing it against the epitope
+  (§10);
+- the **sign of the depth term was inverted**, so it rewarded collisions and penalised
+  good fits — a perfect synthetic nest scored 0.150 while a synthetic collision scored
+  0.850;
+- it **depended on which end of the epitope was listed first**, so the same input in a
+  different order gave a different score;
+- it **could not reject a candidate that physically collided** with the antigen; on 3GBN
+  three of its top ten hits collide, on 2NY7 four of ten.
+
+A module-level warning in `shape.py` documents the inverted sign, which is deliberately
+left unfixed so `benchmark/rescore.py` reproduces the original numbers. Do not use it
+for new work. The full history is in §10.
+
+### 6.6 Limits
 
 - **No side chains on the fragment**, so this measures backbone approach, not packing.
+  `epifitscout build --side-chains packed` adds them afterwards, but the ranking does not
+  see them — which is why that command runs its own contact check on the finished model.
 - **A distance cutoff reaches sideways**: a residue can count as in contact while beside
   the patch rather than facing it. This is exactly what the Lawrence & Colman Sc
   statistic (*J Mol Biol* 234:946, 1993) exists to address, via normal dot products
   weighted by a distance decay rather than distance alone.
 - `normal_quality` is computed as a cheap stand-in for that and **reported but not used**
-  (`weight_normals` defaults to 0): on the natives it ranges 0.09-0.42 and the tightest
+  (`weight_normals` defaults to 0): on the natives it ranges 0.09–0.42 and the tightest
   interface scores lowest, so the centroid-derived normals are not trustworthy. Real Sc
   needs solvent-excluded surfaces of fully-atomic structures; computing it would require
   modelling side chains onto each grafted fragment.
-- **Validation remains thin**: five complexes, no binding data. The native ranks first in
-  all five, but every candidate is within 2 Å RMSD of the query by construction, so they
-  are near-identical loops and the discrimination available is small.
+- **Every candidate is within 2 Å RMSD of the query by construction**, so the hits are
+  near-identical loops and the discrimination available is intrinsically small.
 
 ---
 
@@ -613,8 +543,10 @@ meaning "resolve at use time"; setting them, or `EPIFITSCOUT_MASTER_DIR` /
 | `master.max_hits` | 500 | More hits retained (`--topN`, plus the parser cap and the shard-merge cap) |
 | `master.timeout_seconds` | 420 | Longer MASTER runs tolerated before `MASTERExecutionError` |
 | `master.n_threads` | 0 (off) | MASTER-internal threading; **requires an OpenMP build** |
-| `scoring.weight_depth` | 0.7 | Emphasise protrusion/recession complementarity |
-| `scoring.weight_tau` | 0.3 | Emphasise shared 3D twist over depth interlock |
+| `scoring.clash_cutoff` | 2.0 Å | Reject a hit whose backbone comes closer to the antigen; calibrated in §6.3 |
+| `scoring.contact_cutoff` | 8.0 Å | Out to here a residue counts as facing the epitope |
+| `scoring.weight_normals` | 0.0 | `normal_quality` is reported but not scored; see §6.6 |
+| `scoring.weight_depth` / `weight_tau` | 0.7 / 0.3 | Superseded profile scorer only (§6.5) |
 | `ranking.weight_rmsd` | 0.4 | Favour conformational similarity to the query loop |
 | `ranking.weight_shape` | 0.6 | Favour epitope complementarity |
 | `max_workers` | 6 | Database shards searched in parallel (≈ N× speedup); also parallel queries in `search_many` |
@@ -652,12 +584,15 @@ Then paste two things into the repository (each folder has its own README):
 * **the dataset** (`epifitscout-database-v*.tar.xz`) into `data/` —
   `tar -xJf <file> -C data/`.
 
+Optionally, for side-chain packing only, build **FASPR** into `FASPR/bin/` alongside its
+`dun2010bbdep.bin` rotamer library (see `FASPR/README.md`).
+
 ```bash
-python check_setup.py --search     # confirm both, and run a real search
+epifitscout check --search          # confirm all of it, and run a real search
 ```
 
-MASTER is Linux x86-64 only and separately licensed (GPL for academic use), so it
-is neither bundled nor redistributed here.
+MASTER is Linux x86-64 only and separately licensed (GPL for academic use), and FASPR is
+free for academic use, so neither is bundled or redistributed here.
 
 ### 9.2 Build or update the database
 
@@ -694,7 +629,7 @@ hits = epifitscout.search(query_cdr, query_epitope)
 loads the packaged `conf/config.yaml`, and accepts per-call overrides:
 
 ```python
-hits = epifitscout.search(query_cdr, query_epitope, weight_depth=0.9, max_workers=12)
+hits = epifitscout.search(query_cdr, query_epitope, max_workers=12)
 ```
 
 A missing binary or database raises `MissingBinaryError` or
@@ -728,7 +663,32 @@ ranked      = pipeline.rank(scored, [r for _, _, r in master_hits])       # ③
 Passing `output_dir` to `search()` likewise retains MASTER's intermediates
 (`query.pdb`, `query.pds`, `matches.txt`) instead of discarding a temp directory.
 
-### 9.6 Worked example
+### 9.6 Building the grafted complexes
+
+A search returns ranked fragments. `epifitscout build` turns them into structures — the
+template complex with its CDR replaced by each hit, antigen included:
+
+```bash
+epifitscout build \\
+    --structure complex.pdb \\
+    --cdr H 93 102 --antigen-chain B \\
+    --top 5 --side-chains packed \\
+    --out-dir grafts
+```
+
+`--antigen-chain` detects the epitope by proximity; `--epitope CHAIN FIRST LAST` names it
+explicitly instead. `--side-chains` selects `none` (backbone only), `native` (the
+fragment's own rotamers moved by the same rigid transform) or `packed` (rebuilt with
+FASPR, repacking the graft and a 5 Å shell while pinning the rest of the model).
+
+Each output records how well the loop joins the framework at both ends — a peptide bond
+is 1.33 Å — and an element-aware closest-contact check against the antigen, calibrated
+on 102 native interfaces: polar atoms may approach to 2.2 Å, anything involving a carbon
+needs 2.8 Å. The ranking score is backbone-only and cannot see a side chain driven into
+the antigen, so this check is run on the finished model. Expect it to fire even on good
+grafts: rotamer libraries are discrete and native side chains often are not.
+
+### 9.7 Worked example
 
 `example/example_1a2y.py` runs the 1A2Y Fab / hen lysozyme complex end to end;
 `example/_pymol_render.py` renders the top and bottom hits for visual inspection.
@@ -743,7 +703,7 @@ validated, and what it did and did not change.
 
 ### 10.1 What was wrong
 
-The depth component of [§6.1](#61-component-1--depth-profile-anti-correlation-weight-07)
+The depth component of the profile scorer ([§6.5](#65-the-superseded-profile-scorer))
 rests on a premise stated in the scorer's own docstring (`scoring/shape.py:8`):
 
 > *"The CDR hit is already in the query frame (MASTER superposition), so the CDR and
@@ -767,7 +727,7 @@ across 499 real 1A2Y hits, retrieved fragments sat a median of 86 Å, and up to 
 from the design site.
 
 **Per component.** Torsion ($S_\tau$, weight 0.3) was unaffected: Frenet–Serret torsion
-is invariant under rotation and translation ([§6.2](#62-component-2--backbone-torsion-co-correlation-weight-03)).
+is invariant under rotation and translation ([§6.5](#65-the-superseded-profile-scorer)).
 Depth ($S_d$, weight 0.7) was compromised: its approach axis was the centroid-to-centroid
 vector between two unrelated frames, an artifact of crystal placement rather than binding
 geometry. The failure was quiet: mean-centring cancelled the large offset, so the
@@ -842,15 +802,25 @@ What it did **not** establish:
 
 Beyond [§10](#10-implementation-caveat--the-superposition-frame):
 
-- **Backbone-only, CA-only.** `Fragment` carries N/CA/C/O and the scorer uses CA alone.
-  Side chains — which mediate most of the chemistry and much of the steric fit of a real
-  interface — are invisible. Two loops with identical CA traces and entirely different
-  side-chain presentation score identically.
+- **The central claim is not yet demonstrated.** Nothing here shows that epitope-aware
+  ranking yields better antibodies than conformation-only ranking. The measurements in
+  [§6.4](#64-validation) show the score carries epitope information and exceeds RMSD
+  alone, which is necessary but not sufficient. The missing experiment is the same
+  template and the same MASTER hits ranked with and without the epitope term, with the
+  resulting grafts compared; until it is run, the tool's premise is motivated rather
+  than established.
+- **Backbone-only.** `Fragment` carries N/CA/C/O; the chain database discards side
+  chains. Side chains mediate most of the chemistry and much of the steric fit of a real
+  interface, so two loops with identical backbones and entirely different side-chain
+  presentation score identically. `epifitscout build --side-chains packed` models them
+  afterwards, but the ranking never sees them.
 - **Geometry without chemistry.** There is no electrostatic, hydrophobicity,
-  hydrogen-bonding, or buried-surface-area term, and no clash detection. A hit can score
-  well while interpenetrating the epitope.
-- **No solvent accessibility or burial.** "Depth" is a projection onto one axis, not a
-  measure of how buried a residue is. True concavity is not computed.
+  hydrogen-bonding or buried-surface-area term. Steric collision *is* now detected and
+  rejected (§6.2), but nothing rewards a chemically sensible interface over a merely
+  non-colliding one.
+- **No solvent accessibility or burial.** Contact is nearest-atom distance, not a measure
+  of how buried a residue is; true concavity is not computed, and §6.6 explains why the
+  normal-based stand-in for it is reported but unused.
 - **Database redundancy.** SAbDab is heavily redundant and the pipeline does nothing to
   cluster it, so the top of a ranked list is readily dominated by several structures of
   the same antibody. Observed downstream on 1A2Y: the top four hits by score were the
@@ -858,18 +828,14 @@ Beyond [§10](#10-implementation-caveat--the-superposition-frame):
   distinct hypotheses must deduplicate or diversity-select after retrieval.
 - **No self-hit exclusion.** Querying with a loop whose parent entry is in the database
   retrieves it at RMSD ≈ 0 and ranks it first. Benchmarking must exclude it explicitly.
-- **Planar-loop blind spot.** The $\max|\tau| < 10^{-4}$ guard correctly suppresses
-  noise, but the consequence is that a planar loop contributes $S_\tau = 0$, i.e.
-  mid-scale rather than "unknown" — there is no mechanism to reweight onto depth when
-  torsion is uninformative.
-- **Unvalidated weights, and weak discrimination.** All four weights (0.7/0.3, 0.4/0.6)
-  are set by assertion, not fit to data. No benchmark relates $S_{\text{shape}}$ to any
-  measured binding outcome. With the frame fixed ([§10.4](#104-what-it-changed-and-what-it-did-not-establish)),
-  the native loop still does not stand out on shape alone and scores occupy a narrow band
-  (standard deviation 0.01–0.07), so the shape term currently contributes little to
-  ranking beyond the RMSD term. Calibrating it against a held-out set of known complexes
-  is the natural next step, and is now meaningful because the depth axis is no longer an
-  artifact.
+- **Unvalidated weights.** The ranking weights (0.4/0.6) are set by assertion, not fit
+  to data. The only relation measured to a binding outcome is ρ = −0.326 against ΔG
+  (§6.4, Q4), which is weak. Fitting the weights on a held-out set of known complexes is
+  the natural next step.
+- **Narrow dynamic range.** Because every candidate is within 2 Å RMSD of the query by
+  construction, the hits are near-identical loops and scores occupy a narrow band. The
+  native reaches the 71st percentile rather than the 99th (§6.4, Q3); the score orders
+  plausible candidates, it does not isolate one answer.
 
 ---
 
@@ -898,7 +864,10 @@ Beyond [§10](#10-implementation-caveat--the-superposition-frame):
 | `db/rcsb_downloader.py` | RCSB fetch with on-disk cache |
 | `db/chain_db_builder.py` | Chain database build and incremental update: skip-existing, PDS refresh, atomic writes, orphan removal |
 | `db/verify.py` | One definition of "database is usable", shared by the updater, packager and `check_setup.py` |
-| `check_setup.py` | Verify MASTER and the database are in place; `--search` runs a real example |
+| `cli.py` | The `epifitscout` entry point: `check`, `build`, `view` |
+| `tools/setup_check.py` | Verify MASTER, the database and the optional packer; `--search` runs a real example. Root `check_setup.py` is a shim onto it |
+| `tools/build_complex.py` | Graft ranked hits into the template and write complexes; native or FASPR-packed side chains |
+| `tools/visualize_fit.py` | Export a PyMOL session showing where a fragment fits |
 | `database_builder/build_database.py` | Build or update the database from SAbDab + RCSB |
 | `database_builder/package_dataset.py` | Package a database as a downloadable archive |
 | `tests/` | Test suite; `tests/data/mini_db` is a 14-chain fixture database (~400 kB) |

@@ -7,7 +7,11 @@ light-chain structures taken from SAbDab, already converted for MASTER.
 
 Download `epifitscout-database-v<version>.tar.xz` from Zenodo:
 
-> **TBD — link added when the dataset is published**
+> ⚠️ **Not yet published.** The Zenodo deposit is pending; this line will carry
+> the DOI and download link once it is live. Until then, build the database
+> yourself — see [`database_builder/`](../database_builder/README.md), which
+> fetches from SAbDab and RCSB directly and produces the same layout. It takes a
+> few hours, mostly spent downloading.
 
 About 650 MB to download, about 6 GB once extracted (extraction takes under a minute
 on local disk).
