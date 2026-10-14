@@ -2,15 +2,18 @@
 
 Protein structural fragment search with epitope shape-complementarity scoring.
 
-Give it a CDR loop and the epitope it binds. It searches ~25,000 antibody chains
-from SAbDab for loops that are both structurally similar to yours and
-geometrically complementary to the epitope surface.
+Give it a complex, mark the CDR loop and the epitope. It searches ~25,000
+antibody chains from SAbDab for loops that are both structurally similar to
+yours and geometrically complementary to the epitope surface — then grafts the
+best ones back in and hands you finished structures.
 
 ```
-query PDB ─> QueryBuilder ─> search() ─> ranked hits
-                  │              ├─ 1. MASTER   backbone RMSD search
-                  │              ├─ 2. Shape    depth + torsion complementarity
-               CDR + epitope     └─ 3. Rank     weighted RMSD + shape score
+query PDB ──▶ CDR + epitope ──▶ search() ──▶ ranked hits ──▶ grafted complexes
+                                   │                          (epifitscout build)
+                                   ├─ 1. MASTER  backbone RMSD search
+                                   ├─ 2. graft   place each hit in the Ab–Ag frame
+                                   ├─ 3. fit     longest clash-free contact run
+                                   └─ 4. rank    weighted RMSD + shape
 ```
 
 **Requires:** Linux x86-64 (MASTER's binaries are Linux-only), Python ≥ 3.10,
@@ -70,7 +73,56 @@ and what to run.
 
 ---
 
+## Quick start
+
+One command takes a complex to grafted structures. Mark the CDR you want
+replaced and the antigen chain, and the epitope is found by proximity:
+
+```bash
+epifitscout build \
+    --structure 3gbn.pdb \
+    --cdr H 93 102 \
+    --antigen-chain B \
+    --top 5 --side-chains native \
+    --out-dir grafts
+```
+
+```
+template 3gbn.pdb: CDR H/93-102 (14 residues), epitope B, within 10 A of the CDR: 18-20, 36, 38-39, 41-46, 49 (13 residues), reach 2.8 A
+building 5 complexes
+
+  1  6UYN:H       rmsd 0.16  score 0.249  join 1.19/1.40 A  clashes 0  contact 2.88 A  01_6UYN_H.pdb
+  2  5C0S:H       rmsd 0.17  score 0.240  join 1.28/1.27 A  clashes 0  contact 2.91 A  02_5C0S_H.pdb
+  3  3GBM:H       rmsd 0.18  score 0.244  join 1.22/1.36 A  clashes 0  contact 2.88 A  03_3GBM_H.pdb
+  4  3GBM:I       rmsd 0.20  score 0.243  join 1.25/1.45 A  clashes 0  contact 2.86 A  04_3GBM_I.pdb
+  5  8DIM:H       rmsd 0.22  score 0.244  join 1.07/1.19 A  clashes 0  contact 2.83 A  05_8DIM_H.pdb
+
+5 complexes written to grafts
+  ideal peptide bond is 1.33 A; 5/5 join cleanly
+  side chains unavailable for 3: 5C0S:H, 3GBM:H, 3GBM:I
+  summary: grafts/grafts.tsv
+```
+
+You get one PDB per hit — your template with its CDR replaced by that fragment,
+antigen included — plus `grafts.tsv` ranking them. That is the whole tool; the
+rest of this page is about controlling it.
+
+Read the numbers as: `rmsd` to your query loop, `score` the epitope fit,
+`join` how well the graft meets the framework at each end against a 1.33 Å
+peptide bond, and `contact` its closest approach to the antigen.
+
+- **Pick the epitope yourself** instead of by proximity: `--epitope B 38 46`.
+  See [Defining the epitope](#defining-the-epitope).
+- **Side chains**: `none`, `native` or `packed`. See
+  [Building the grafted complexes](#building-the-grafted-complexes).
+- **Just the ranked list, no structures**: use the Python API below.
+- **Look at a fit**: `epifitscout view` exports a PyMOL session.
+
+---
+
 ## Usage
+
+For the ranked fragments without building structures, or to script the search:
 
 ```python
 import epifitscout
