@@ -1,0 +1,61 @@
+cff-version: 1.2.0
+message: "If you use EpiFitScout, please cite it as below, together with MASTER and SAbDab."
+title: "EpiFitScout: epitope-complementary CDR fragment retrieval"
+abstract: >-
+  Given a query CDR loop and its bound epitope, EpiFitScout searches a chain
+  database derived from SAbDab for structurally similar CDR fragments that are
+  geometrically complementary to the epitope surface.
+type: software
+authors:
+  - family-names: Ashraf
+    given-names: Faisal B.
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/fbabd/epifitscout"
+keywords:
+  - antibody
+  - CDR
+  - epitope
+  - shape complementarity
+  - structural bioinformatics
+references:
+  - type: article
+    title: "The design and application of structural motif libraries: MASTER"
+    authors:
+      - family-names: Zhou
+        given-names: Jianfu
+      - family-names: Grigoryan
+        given-names: Gevorg
+    journal: "Protein Science"
+    volume: 24
+    issue: 4
+    start: 508
+    end: 524
+    year: 2015
+    notes: "MASTER — the backbone search engine EpiFitScout drives."
+  - type: article
+    title: "SAbDab: the structural antibody database"
+    authors:
+      - family-names: Dunbar
+        given-names: James
+      - family-names: Krawczyk
+        given-names: Konrad
+      - family-names: Leem
+        given-names: Jinwoo
+      - family-names: Baker
+        given-names: Terry
+      - family-names: Fuchs
+        given-names: Angelika
+      - family-names: Georges
+        given-names: Guy
+      - family-names: Shi
+        given-names: Jiye
+      - family-names: Deane
+        given-names: Charlotte M.
+    journal: "Nucleic Acids Research"
+    volume: 42
+    issue: D1
+    start: 1140
+    end: 1146
+    year: 2014
+    notes: "Source of the antibody entry selection for the chain database."

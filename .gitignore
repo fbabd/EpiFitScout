@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments and tool caches
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# What you paste into the repository is not committed. Only the README that
+# explains each folder is. Patterns are anchored with a leading slash.
+/data/*
+!/data/README.md
+/MASTER/*
+!/MASTER/README.md
+/FASPR/*
+!/FASPR/README.md
+
+# Database builder working files
+/database_builder/rcsb_cache/
+/database_builder/sabdab_summary.*
+/database_builder/*.tsv
+/database_builder/*.csv
+
+# Packaged datasets
+*.tar.xz
+*.tar.gz
+/dataset_release/
+
+# Generated example output
+/example/test_run/
+/benchmark/work/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,722 @@
+[
+  {
+    "pdb": "8vut",
+    "true": 0.5336,
+    "decoys": [
+      0.3441,
+      0.2532,
+      0.2408,
+      0.3079,
+      0.3321
+    ],
+    "decoy_mean": 0.2956,
+    "decoy_best": 0.3441,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vym",
+    "true": 0.5161,
+    "decoys": [
+      0.358,
+      0.358,
+      0.358
+    ],
+    "decoy_mean": 0.358,
+    "decoy_best": 0.358,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8ulf",
+    "true": 0.6318,
+    "decoys": [
+      0.1666,
+      0.1666,
+      0.2116,
+      0.3403,
+      0.2696
+    ],
+    "decoy_mean": 0.2309,
+    "decoy_best": 0.3403,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vun",
+    "true": 0.5718,
+    "decoys": [
+      0.1766,
+      0.2407,
+      0.1939,
+      0.1939,
+      0.2666
+    ],
+    "decoy_mean": 0.2143,
+    "decoy_best": 0.2666,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vuq",
+    "true": 0.544,
+    "decoys": [
+      0.1841,
+      0.1988,
+      0.234,
+      0.1841,
+      0.3521
+    ],
+    "decoy_mean": 0.2306,
+    "decoy_best": 0.3521,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8y4a",
+    "true": 0.4414,
+    "decoys": [
+      0.2134,
+      0.2134,
+      0.2134
+    ],
+    "decoy_mean": 0.2134,
+    "decoy_best": 0.2134,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8yxi",
+    "true": 0.5488,
+    "decoys": [
+      0.2004,
+      0.0,
+      0.2288,
+      0.0,
+      0.1953
+    ],
+    "decoy_mean": 0.1249,
+    "decoy_best": 0.2288,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "9clp",
+    "true": 0.6008,
+    "decoys": [
+      0.2115,
+      0.3777,
+      0.3777,
+      0.2115,
+      0.3469
+    ],
+    "decoy_mean": 0.3051,
+    "decoy_best": 0.3777,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "9jbq",
+    "true": 0.4691,
+    "decoys": [
+      0.0,
+      0.0,
+      0.2145
+    ],
+    "decoy_mean": 0.0715,
+    "decoy_best": 0.2145,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8keh",
+    "true": 0.6065,
+    "decoys": [
+      0.2514,
+      0.2718,
+      0.4881,
+      0.1818,
+      0.2026
+    ],
+    "decoy_mean": 0.2791,
+    "decoy_best": 0.4881,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8soz",
+    "true": 0.6739,
+    "decoys": [
+      0.4558,
+      0.4558,
+      0.4558
+    ],
+    "decoy_mean": 0.4558,
+    "decoy_best": 0.4558,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8tzy",
+    "true": 0.6017,
+    "decoys": [
+      0.3511,
+      0.2571,
+      0.3511
+    ],
+    "decoy_mean": 0.3198,
+    "decoy_best": 0.3511,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "9aus",
+    "true": 0.5556,
+    "decoys": [
+      0.2275,
+      0.2275,
+      0.4425
+    ],
+    "decoy_mean": 0.2992,
+    "decoy_best": 0.4425,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8tft",
+    "true": 0.4224,
+    "decoys": [
+      0.2212,
+      0.2431,
+      0.2431,
+      0.2167,
+      0.2167
+    ],
+    "decoy_mean": 0.2282,
+    "decoy_best": 0.2431,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8tv3",
+    "true": 0.6974,
+    "decoys": [
+      0.3025,
+      0.4174
+    ],
+    "decoy_mean": 0.3599,
+    "decoy_best": 0.4174,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8tvj",
+    "true": 0.6191,
+    "decoys": [
+      0.1884,
+      0.2368,
+      0.2113,
+      0.2368,
+      0.2368
+    ],
+    "decoy_mean": 0.222,
+    "decoy_best": 0.2368,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "9iy2",
+    "true": 0.5259,
+    "decoys": [
+      0.2321,
+      0.3143,
+      0.2271,
+      0.2271,
+      0.4584
+    ],
+    "decoy_mean": 0.2918,
+    "decoy_best": 0.4584,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8zhn",
+    "true": 0.6133,
+    "decoys": [
+      0.3091,
+      0.3523,
+      0.3523,
+      0.3168,
+      0.2793
+    ],
+    "decoy_mean": 0.322,
+    "decoy_best": 0.3523,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8zhp",
+    "true": 0.5263,
+    "decoys": [
+      0.2649,
+      0.1977,
+      0.1789,
+      0.2094,
+      0.1789
+    ],
+    "decoy_mean": 0.206,
+    "decoy_best": 0.2649,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8kdm",
+    "true": 0.5927,
+    "decoys": [
+      0.472,
+      0.228,
+      0.2682,
+      0.223,
+      0.228
+    ],
+    "decoy_mean": 0.2838,
+    "decoy_best": 0.472,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8kdr",
+    "true": 0.6825,
+    "decoys": [
+      0.191,
+      0.191
+    ],
+    "decoy_mean": 0.191,
+    "decoy_best": 0.191,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8kds",
+    "true": 0.6003,
+    "decoys": [
+      0.2866,
+      0.2088,
+      0.1767,
+      0.227,
+      0.227
+    ],
+    "decoy_mean": 0.2252,
+    "decoy_best": 0.2866,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8kdt",
+    "true": 0.5617,
+    "decoys": [
+      0.2173,
+      0.4937,
+      0.2228,
+      0.2322,
+      0.2173
+    ],
+    "decoy_mean": 0.2767,
+    "decoy_best": 0.4937,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8kej",
+    "true": 0.5439,
+    "decoys": [
+      0.2259,
+      0.2259,
+      0.3438,
+      0.4615,
+      0.2537
+    ],
+    "decoy_mean": 0.3021,
+    "decoy_best": 0.4615,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8kek",
+    "true": 0.5461,
+    "decoys": [
+      0.1907,
+      0.2725,
+      0.3066,
+      0.2929,
+      0.3066
+    ],
+    "decoy_mean": 0.2739,
+    "decoy_best": 0.3066,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8keo",
+    "true": 0.5874,
+    "decoys": [
+      0.1894,
+      0.1894,
+      0.1894
+    ],
+    "decoy_mean": 0.1894,
+    "decoy_best": 0.1894,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8kep",
+    "true": 0.5943,
+    "decoys": [
+      0.1961,
+      0.1961
+    ],
+    "decoy_mean": 0.1961,
+    "decoy_best": 0.1961,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8keq",
+    "true": 0.6127,
+    "decoys": [
+      0.2465,
+      0.1832,
+      0.4693,
+      0.2309,
+      0.2038
+    ],
+    "decoy_mean": 0.2667,
+    "decoy_best": 0.4693,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8ker",
+    "true": 0.6603,
+    "decoys": [
+      0.1985,
+      0.2996,
+      0.1985
+    ],
+    "decoy_mean": 0.2322,
+    "decoy_best": 0.2996,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8tnj",
+    "true": 0.4434,
+    "decoys": [
+      0.2805,
+      0.2805,
+      0.2043,
+      0.2043,
+      0.2805
+    ],
+    "decoy_mean": 0.25,
+    "decoy_best": 0.2805,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8sdh",
+    "true": 0.6264,
+    "decoys": [
+      0.3451,
+      0.3451,
+      0.3451
+    ],
+    "decoy_mean": 0.3451,
+    "decoy_best": 0.3451,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8to9",
+    "true": 0.4744,
+    "decoys": [
+      0.2815,
+      0.2815,
+      0.2815,
+      0.2815,
+      0.3102
+    ],
+    "decoy_mean": 0.2872,
+    "decoy_best": 0.3102,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8k9j",
+    "true": 0.416,
+    "decoys": [
+      0.4109,
+      0.4109
+    ],
+    "decoy_mean": 0.4109,
+    "decoy_best": 0.4109,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8qkr",
+    "true": 0.2913,
+    "decoys": [
+      0.1263,
+      0.1516,
+      0.1263,
+      0.1719
+    ],
+    "decoy_mean": 0.1441,
+    "decoy_best": 0.1719,
+    "n_decoys": 4
+  },
+  {
+    "pdb": "8qks",
+    "true": 0.3562,
+    "decoys": [
+      0.2713,
+      0.2887,
+      0.2887,
+      0.3682,
+      0.2887
+    ],
+    "decoy_mean": 0.3011,
+    "decoy_best": 0.3682,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vcr",
+    "true": 0.4816,
+    "decoys": [
+      0.1128,
+      0.1128,
+      0.1436,
+      0.1606,
+      0.1436
+    ],
+    "decoy_mean": 0.1347,
+    "decoy_best": 0.1606,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8yww",
+    "true": 0.4543,
+    "decoys": [
+      0.3187,
+      0.2003,
+      0.2334,
+      0.2963,
+      0.2334
+    ],
+    "decoy_mean": 0.2564,
+    "decoy_best": 0.3187,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "9ber",
+    "true": 0.2833,
+    "decoys": [
+      0.1042,
+      0.0889,
+      0.1042,
+      0.0,
+      0.1211
+    ],
+    "decoy_mean": 0.0837,
+    "decoy_best": 0.1211,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "9bf6",
+    "true": 0.2955,
+    "decoys": [
+      0.1197,
+      0.0814,
+      0.1075,
+      0.1197
+    ],
+    "decoy_mean": 0.1071,
+    "decoy_best": 0.1197,
+    "n_decoys": 4
+  },
+  {
+    "pdb": "8tgv",
+    "true": 0.4993,
+    "decoys": [
+      0.2837,
+      0.2837
+    ],
+    "decoy_mean": 0.2837,
+    "decoy_best": 0.2837,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8thz",
+    "true": 0.4533,
+    "decoys": [
+      0.3368,
+      0.2759,
+      0.3368,
+      0.3368,
+      0.2929
+    ],
+    "decoy_mean": 0.3158,
+    "decoy_best": 0.3368,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vm8",
+    "true": 0.5391,
+    "decoys": [
+      0.2204,
+      0.424,
+      0.2204
+    ],
+    "decoy_mean": 0.2883,
+    "decoy_best": 0.424,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8vww",
+    "true": 0.3667,
+    "decoys": [
+      0.217,
+      0.2395
+    ],
+    "decoy_mean": 0.2283,
+    "decoy_best": 0.2395,
+    "n_decoys": 2
+  },
+  {
+    "pdb": "8zgu",
+    "true": 0.5259,
+    "decoys": [
+      0.24,
+      0.3829,
+      0.24,
+      0.2992,
+      0.2789
+    ],
+    "decoy_mean": 0.2882,
+    "decoy_best": 0.3829,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8q5y",
+    "true": 0.7622,
+    "decoys": [
+      0.403,
+      0.4026,
+      0.2571,
+      0.4026,
+      0.2571
+    ],
+    "decoy_mean": 0.3445,
+    "decoy_best": 0.403,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8vvk",
+    "true": 0.5071,
+    "decoys": [
+      0.1938,
+      0.2222,
+      0.1938
+    ],
+    "decoy_mean": 0.2032,
+    "decoy_best": 0.2222,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8xse",
+    "true": 0.7384,
+    "decoys": [
+      0.3495,
+      0.3119,
+      0.3457,
+      0.3457,
+      0.3119
+    ],
+    "decoy_mean": 0.3329,
+    "decoy_best": 0.3495,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8xsj",
+    "true": 0.7211,
+    "decoys": [
+      0.2794,
+      0.5122,
+      0.2406,
+      0.2406,
+      0.5405
+    ],
+    "decoy_mean": 0.3626,
+    "decoy_best": 0.5405,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8xsl",
+    "true": 0.6383,
+    "decoys": [
+      0.1814,
+      0.5068,
+      0.1814,
+      0.3059,
+      0.1814
+    ],
+    "decoy_mean": 0.2714,
+    "decoy_best": 0.5068,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8pmz",
+    "true": 0.5159,
+    "decoys": [
+      0.1792,
+      0.2792,
+      0.1792,
+      0.1792,
+      0.3332
+    ],
+    "decoy_mean": 0.23,
+    "decoy_best": 0.3332,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8xk6",
+    "true": 0.5354,
+    "decoys": [
+      0.4314,
+      0.4314,
+      0.2667
+    ],
+    "decoy_mean": 0.3765,
+    "decoy_best": 0.4314,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8xn9",
+    "true": 0.4451,
+    "decoys": [
+      0.2315,
+      0.2315,
+      0.2315
+    ],
+    "decoy_mean": 0.2315,
+    "decoy_best": 0.2315,
+    "n_decoys": 3
+  },
+  {
+    "pdb": "8xnh",
+    "true": 0.296,
+    "decoys": [
+      0.2123,
+      0.2123,
+      0.1989,
+      0.1737,
+      0.1883
+    ],
+    "decoy_mean": 0.1971,
+    "decoy_best": 0.2123,
+    "n_decoys": 5
+  },
+  {
+    "pdb": "8y6a",
+    "true": 0.5561,
+    "decoys": [
+      0.1178,
+      0.202,
+      0.1178,
+      0.1178
+    ],
+    "decoy_mean": 0.1389,
+    "decoy_best": 0.202,
+    "n_decoys": 4
+  },
+  {
+    "pdb": "7uij",
+    "true": 0.641,
+    "decoys": [
+      0.4672,
+      0.3737
+    ],
+    "decoy_mean": 0.4205,
+    "decoy_best": 0.4672,
+    "n_decoys": 2
+  }
+]
