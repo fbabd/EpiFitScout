@@ -1,0 +1,122 @@
+[project]
+name = "epifitscout"
+version = "3.0.0"
+description = "Protein structural fragment search with epitope shape complementarity scoring"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Faisal B. Ashraf" }]
+keywords = ["bioinformatics", "antibody", "cdr", "epitope", "structural-biology", "protein-design"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Typing :: Typed",
+]
+
+# Deliberately minimal: these four are the only packages the library imports.
+# Everything heavier belongs to an optional extra below.
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "biopython>=1.83",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+epifitscout = "epifitscout.cli:main"
+
+[project.optional-dependencies]
+# Dependencies of example/ and the tutorial notebook only.
+examples = [
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "jupyterlab>=4.0",
+    "ipykernel>=6.0",
+    "py3Dmol>=2.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "mypy>=1.9",
+    "ruff>=0.4",
+    "types-PyYAML",
+]
+all = ["epifitscout[examples,dev]"]
+
+[project.urls]
+Repository = "https://github.com/fbabd/EpiFitScout"
+Issues = "https://github.com/fbabd/EpiFitScout/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["epifitscout"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# The library, tests and tools are linted strictly. Demo scripts, the benchmark
+# harness and the tutorial notebook are held to a looser standard: they insert
+# the repository onto sys.path before importing epifitscout (E402, I001) and use
+# compact one-line plotting idioms (E702) that read better in that context than
+# the expanded form.
+"database_builder/*.py" = ["E402"]
+"check_setup.py" = ["E402"]
+"example/*.py" = ["E402", "I001", "E702", "B905"]
+"example/*.ipynb" = ["E402", "I001", "E702", "E501", "B905", "F811"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["epifitscout"]
+
+[tool.mypy]
+# strict applies to the whole library, so new code is held to it from the start.
+strict = true
+python_version = "3.10"
+ignore_missing_imports = true
+files = ["epifitscout"]
+
+# Biopython ships no type information and numpy's stubs lose precision through
+# the array manipulation in these modules, so strict mode reports ~40 findings
+# that are all noise about third-party signatures rather than defects in this
+# code. They are relaxed per module and per error code, deliberately narrowly:
+# everything else, including every error class that can hide a real bug, stays
+# enforced here, and the rest of the package remains fully strict.
+# Tightening these is tracked work, not a licence to add untyped code.
+[[tool.mypy.overrides]]
+module = [
+    "epifitscout.utils.io",
+    "epifitscout.utils.geometry",
+    "epifitscout.query.builder",
+    "epifitscout.db.chain_db_builder",
+    "epifitscout.scoring.shape",
+    "epifitscout.types.superposition",
+    "epifitscout.types.fragment",
+    "epifitscout.tools.build_complex",
+    "epifitscout.tools.visualize_fit",
+    # Writes structures through Bio.PDB, which ships no type information.
+    "epifitscout.graft.assemble",
+]
+disable_error_code = ["no-any-return", "no-untyped-call", "type-arg", "attr-defined"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "needs_master: requires the MASTER binaries (MASTER/bin or EPIFITSCOUT_MASTER_DIR)",
+    "slow: takes more than a few seconds",
+]

@@ -1,0 +1,72 @@
+{
+  "pdb/1FDL_H_H.pdb": {
+    "pdb_id": "1FDL",
+    "chain": "H",
+    "chain_type": "H"
+  },
+  "pdb/1FDL_L_L.pdb": {
+    "pdb_id": "1FDL",
+    "chain": "L",
+    "chain_type": "L"
+  },
+  "pdb/3RKD_H_H.pdb": {
+    "pdb_id": "3RKD",
+    "chain": "H",
+    "chain_type": "H"
+  },
+  "pdb/3RKD_L_L.pdb": {
+    "pdb_id": "3RKD",
+    "chain": "L",
+    "chain_type": "L"
+  },
+  "pdb/1A2Y_B_H.pdb": {
+    "pdb_id": "1A2Y",
+    "chain": "B",
+    "chain_type": "H"
+  },
+  "pdb/1A2Y_A_L.pdb": {
+    "pdb_id": "1A2Y",
+    "chain": "A",
+    "chain_type": "L"
+  },
+  "pdb/7DK7_e_H.pdb": {
+    "pdb_id": "7DK7",
+    "chain": "e",
+    "chain_type": "H"
+  },
+  "pdb/7UIH_E_L.pdb": {
+    "pdb_id": "7UIH",
+    "chain": "E",
+    "chain_type": "L"
+  },
+  "pdb/7UJD_E_L.pdb": {
+    "pdb_id": "7UJD",
+    "chain": "E",
+    "chain_type": "L"
+  },
+  "pdb/1OAU_I_H.pdb": {
+    "pdb_id": "1OAU",
+    "chain": "I",
+    "chain_type": "H"
+  },
+  "pdb/7UIH_C_L.pdb": {
+    "pdb_id": "7UIH",
+    "chain": "C",
+    "chain_type": "L"
+  },
+  "pdb/7UJD_C_L.pdb": {
+    "pdb_id": "7UJD",
+    "chain": "C",
+    "chain_type": "L"
+  },
+  "pdb/7UIH_F_H.pdb": {
+    "pdb_id": "7UIH",
+    "chain": "F",
+    "chain_type": "H"
+  },
+  "pdb/7UJD_F_H.pdb": {
+    "pdb_id": "7UJD",
+    "chain": "F",
+    "chain_type": "H"
+  }
+}

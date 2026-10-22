@@ -1,0 +1,43 @@
+MIT License
+
+Copyright (c) 2026 Faisal B. Ashraf
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY COMPONENTS
+
+This licence covers the EpiFitScout source code only. EpiFitScout depends on
+software and data distributed by others under their own terms, none of which
+are redistributed here:
+
+* MASTER (createPDS, master) — Zhou & Grigoryan, Protein Science 24(4):508-524,
+  2015. MASTER v1 is distributed by the Grigoryan lab, its source "freely
+  available to academic users under the terms of the GNU General Public
+  License"; commercial licensing is handled by the lab. EpiFitScout invokes it
+  as a separate process and does not link against, bundle or redistribute it.
+  Obtain it from the authors at
+  https://grigoryanlab.org/legacy.php?sec=download&soft=MASTER
+
+* SAbDab — Dunbar et al., Nucleic Acids Research 42:D1140-D1146, 2014.
+  Summary files are distributed by OPIG at
+  https://opig.stats.ox.ac.uk/webapps/sabdab-sabpred/sabdab/ under their terms.
+
+* RCSB PDB coordinate data — in the public domain (CC0).

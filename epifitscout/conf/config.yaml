@@ -1,0 +1,72 @@
+# EpiFitScout v3 configuration
+# Every search and scoring parameter lives here. Paths are passed as CLI
+# arguments, since they are machine-specific.
+#
+# An unknown key in any section is an error, not a warning: a misspelt
+# parameter that fell back to its default would look like a result for the
+# setting you asked for.
+
+# --- stage 1: retrieval -----------------------------------------------------
+# The query is the two framework stems flanking the CDR, not the CDR itself,
+# and --gapLen fixes the number of residues between them.
+master:
+  rmsd_threshold: 2.0    # Maximum stem RMSD (Å) to retain a match
+  max_hits: 500          # Maximum matches returned by MASTER
+  timeout_seconds: 1800  # Per-MASTER-process limit. I/O bound, so what matters
+                         # is chains per process: 420 s sufficed for ~6,000 and
+                         # was silently too short for ~12,600
+  n_threads: 0           # 0 = disabled; requires an OpenMP build of MASTER
+  gap_tolerance: 0       # Residues of slack in the loop length. 0 keeps the
+                         # retrieved loop and the replaced span one-to-one.
+
+# --- stage 2: can it be grafted? --------------------------------------------
+# Junction geometry, checked before anything expensive happens. Ideal peptide
+# geometry is C-N 1.33 Å, CA-C-N 116.2°, C-N-CA 121.7°.
+feasibility:
+  bond_min: 1.0
+  bond_max: 1.8
+  angle_tolerance: 30.0      # degrees from ideal
+  self_clash_cutoff: 2.2     # loop vs its own framework, Å
+  max_stem_rmsd: 2.0         # fit residual, Å
+  max_span_per_residue: 3.5  # beyond this a chain cannot close the gap
+
+# --- the reported models' interface -----------------------------------------
+# None of this ranks. The ranking is decided on backbone geometry before any of
+# it runs, so these all-atom numbers are computed only for the models that come
+# out — which is what leaves them usable as evidence about the ranking.
+# Conventional definitions throughout; see epifitscout/scoring/interface.py.
+interface:
+  probe_radius: 1.4          # water
+  sasa_points: 200           # Shrake-Rupley sample points per atom
+  vdw_overlap: 0.6
+  contact_cutoff: 4.5
+  hbond_distance: 3.5
+  hbond_angle: 90.0
+  salt_bridge_distance: 4.0
+  grid_spacing: 0.75         # void-volume grid, Å (~2% discretisation error)
+  grid_margin: 3.0
+
+# --- stage 3: the epitope, and the ranking ----------------------------------
+# The epitope is the antigen residues in contact with the template's own CDR.
+# Candidates are ranked by how well their backbone complements that surface,
+# computed before anything is packed. This is the only ranking in v3; the
+# all-atom interface numbers above are measurements, not an objective.
+#
+# The depth term's sign is corrected from v1, which negated it and so rewarded
+# loops that pass through the antigen. See epifitscout/scoring/shape.py.
+epitope_cutoff: 4.5   # antigen heavy atom within this of the CDR, Å
+shape:
+  weight_depth: 0.7   # depth-profile correlation with the epitope
+  weight_tau: 0.3     # backbone-torsion correlation
+
+# --- budget -----------------------------------------------------------------
+# pool_size is the search budget: graftable candidates kept in contention after
+# the shape score. Hold it equal when comparing against another method. Only
+# top_k models are packed and measured, so packing cost scales with top_k and
+# not with how many loops the search returned.
+pool_size: 50
+top_k: 10
+stem_length: 4        # framework residues per stem in the query
+max_workers: 6
+log_level: INFO
+
