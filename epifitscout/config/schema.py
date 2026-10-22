@@ -147,6 +147,9 @@ class PipelineConfig:
     #: Antigen heavy atoms this close to the template CDR define the
     #: epitope, in A. Only residues genuinely in contact.
     epitope_cutoff: float = 4.5
+    #: Loop backbone within this of the antigen is interpenetration, in
+    #: A. Calibrated on 86 natives, whose closest approach is 2.12 A.
+    collision_cutoff: float = 2.0
     #: Candidates returned after the final ranking.
     top_k: int = 10
     #: Stem length, in residues, taken on each side of the CDR for the query.

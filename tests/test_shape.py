@@ -76,3 +76,63 @@ def test_epitope_picks_contacting_residues_only() -> None:
     out = epitope_ca(loop, antigen, resid, is_ca, cutoff=4.5)
     assert len(out) == 1
     assert out[0][0] == pytest.approx(2.0)
+
+
+class TestTheStericCounterweight:
+    """Shape alone picks the loops furthest inside the antigen.
+
+    The depth correlation is maximised by pressing the loop into the surface,
+    so it has to be paired with something that counts what that costs.
+    """
+
+    def test_a_buried_loop_is_counted(self) -> None:
+        from epifitscout.scoring.collision import count_collisions
+        antigen = np.zeros((1, 3))
+        inside = np.array([[[0.0, 0.0, 0.5]]])     # 0.5 A away: interpenetrating
+        outside = np.array([[[0.0, 0.0, 9.0]]])    # 9 A away: clear
+        assert count_collisions(inside, antigen) == 1
+        assert count_collisions(outside, antigen) == 0
+
+    def test_nothing_to_hit_is_not_a_collision(self) -> None:
+        from epifitscout.scoring.collision import count_collisions
+        assert count_collisions(np.zeros((0, 4, 3)), np.zeros((5, 3))) == 0
+        assert count_collisions(np.zeros((5, 4, 3)), np.zeros((0, 3))) == 0
+
+    def test_the_native_cutoff_admits_real_interfaces(self) -> None:
+        """2.0 A must not reject a contact a real complex would make.
+
+        The closest any native CDR backbone comes to its antigen is 2.12 A over
+        86 complexes, so a pair at 2.12 A is a contact, not a collision.
+        """
+        from epifitscout.scoring.collision import count_collisions
+        antigen = np.zeros((1, 3))
+        native_closest = np.array([[[0.0, 0.0, 2.12]]])
+        assert count_collisions(native_closest, antigen) == 0
+
+    def test_collision_outranks_shape(self) -> None:
+        """A colliding candidate sorts below a clean one, whatever its score."""
+        from epifitscout.pipeline.graft_pipeline import _order
+
+        class Stub:
+            def __init__(self, score, collide):
+                self.shape = type("S", (), {"score": score})()
+                self.n_collide = collide
+
+        best_but_buried = Stub(0.99, 12)
+        worse_but_clean = Stub(0.10, 0)
+        ordered = _order([best_but_buried, worse_but_clean])
+        assert ordered[0] is worse_but_clean
+
+    def test_colliding_candidates_are_still_returned(self) -> None:
+        """Ordering, not exclusion: when everything collides, output is not empty."""
+        from epifitscout.pipeline.graft_pipeline import _order
+
+        class Stub:
+            def __init__(self, score, collide):
+                self.shape = type("S", (), {"score": score})()
+                self.n_collide = collide
+
+        all_bad = [Stub(0.3, 5), Stub(0.8, 9), Stub(0.5, 1)]
+        ordered = _order(all_bad)
+        assert len(ordered) == 3
+        assert [c.shape.score for c in ordered] == [0.8, 0.5, 0.3]

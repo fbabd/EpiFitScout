@@ -55,6 +55,14 @@ interface:
 # The depth term's sign is corrected from v1, which negated it and so rewarded
 # loops that pass through the antigen. See epifitscout/scoring/shape.py.
 epitope_cutoff: 4.5   # antigen heavy atom within this of the CDR, Å
+
+# Shape complementarity has no steric content: its correlation is highest when
+# the loop is pressed into the surface. Ranked on shape alone, 47 of 85 models
+# over 17 targets carried more than twenty clashes. So candidates clear of the
+# antigen sort above those that are not, and shape decides within each group.
+# This orders rather than gates -- a target whose candidates all collide still
+# gets an answer, and the result records how many were clear.
+collision_cutoff: 2.0  # loop backbone nearer than this is interpenetration, Å
 shape:
   weight_depth: 0.7   # depth-profile correlation with the epitope
   weight_tau: 0.3     # backbone-torsion correlation

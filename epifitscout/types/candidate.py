@@ -50,6 +50,9 @@ class GraftCandidate:
             from the database are the ones MASTER aligned.
         stem_rmsd_bb: Full-backbone (N, CA, C, O) RMSD of the stems after the
             fit — the residual of the transform actually used.
+        n_collide: Set by the selection stage; loop backbone atoms inside the
+            antigen. Ranks above :attr:`shape`, because a loop in the wrong
+            place is not a candidate however well its profile matches.
         shape: Set by the selection stage; a
             :class:`~epifitscout.scoring.shape.ShapeScore` — how well the placed
             loop's backbone complements the epitope. This is the only thing the
@@ -72,6 +75,7 @@ class GraftCandidate:
     stem_rmsd_bb: float
     feasibility: Any = None
     shape: Any = None
+    n_collide: int = 0
     interface: Any = None
     model_path: Any = None
     metadata: dict[str, Any] = field(default_factory=dict, compare=False)
@@ -144,4 +148,6 @@ class GraftCandidate:
             parts.append("feasible" if self.is_feasible else "infeasible")
         if self.shape is not None:
             parts.append(f"shape={self.shape.score:.3f}")
+        if self.n_collide:
+            parts.append(f"collide={self.n_collide}")
         return ", ".join(parts) + ")"

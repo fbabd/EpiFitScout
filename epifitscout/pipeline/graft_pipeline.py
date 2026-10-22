@@ -54,6 +54,7 @@ from epifitscout.graft.assemble import TemplateSite
 from epifitscout.master.parser import ParseStats, parse_anchor_matches
 from epifitscout.master.runner import MASTERRunner
 from epifitscout.query.builder import QueryBuilder
+from epifitscout.scoring.collision import count_collisions
 from epifitscout.scoring.epitope import MIN_EPITOPE_RESIDUES, epitope_ca
 from epifitscout.scoring.interface import InterfaceScorer
 from epifitscout.scoring.shape import ShapeComplementarityScorer
@@ -66,7 +67,7 @@ __all__ = ["GraftPipeline", "GraftResult"]
 
 
 def _order(candidates: list[GraftCandidate]) -> list[GraftCandidate]:
-    """Best first, by shape complementarity to the epitope. Nothing else.
+    """Best first: clear of the antigen, then by shape complementarity.
 
     This is the whole ranking. It is computed on backbone coordinates before
     anything is packed, so the order a caller sees is decided by how the loop
@@ -76,7 +77,10 @@ def _order(candidates: list[GraftCandidate]) -> list[GraftCandidate]:
     """
     return sorted(
         candidates,
-        key=lambda c: float(getattr(c.shape, "score", 0.0) or 0.0),
+        key=lambda c: (
+            int(getattr(c, "n_collide", 0) or 0) == 0,
+            float(getattr(c.shape, "score", 0.0) or 0.0),
+        ),
         reverse=True,
     )
 
@@ -98,6 +102,10 @@ class GraftResult:
     #: Antigen residues the shape score was computed against. Not a funnel
     #: stage -- it counts the target's epitope, not surviving candidates.
     epitope_residues: int = 0
+    #: Feasible candidates whose backbone is clear of the antigen. Not a funnel
+    #: stage either: colliding candidates are demoted, not dropped, so this can
+    #: be smaller than the pool that follows it.
+    clear_of_antigen: int = 0
     parse_stats: ParseStats | None = None
 
     @property
@@ -350,10 +358,21 @@ class GraftPipeline:
         )
         for candidate in feasible:
             candidate.shape = scorer_shape.score(candidate.placed_loop, epitope)
+            candidate.n_collide = count_collisions(
+                candidate.placed_loop, site.antigen_coords,
+                cutoff=cfg.collision_cutoff,
+            )
+        clear = sum(1 for c in feasible if not c.n_collide)
 
+        # Shape has no steric content -- its correlation is maximised by
+        # pressing the loop into the surface -- so it cannot be the whole
+        # ranking. Candidates clear of the antigen sort above those that are
+        # not, and shape decides within each group. This orders rather than
+        # gates: when every candidate collides, the least-bad ones still come
+        # back, and the funnel records how many were clear.
         pool = sorted(
             feasible,
-            key=lambda c: float(c.shape.score),
+            key=lambda c: (c.n_collide == 0, float(c.shape.score)),
             reverse=True,
         )[: cfg.pool_size]
         funnel["pooled"] = len(pool)
@@ -372,6 +391,7 @@ class GraftPipeline:
         result = GraftResult(
             query=query, site=site, top=ranked, pool=ranked,
             funnel=funnel, parse_stats=stats, epitope_residues=len(epitope),
+            clear_of_antigen=clear,
         )
         logger.info("Pipeline: %s", result.describe())
         return result
