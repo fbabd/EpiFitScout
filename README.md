@@ -470,7 +470,59 @@ native, sterically checked, many per target — is what makes these useful as
 **starting points and as seeds for a generative or optimisation stage**, rather
 than as finished designs.
 
-### What it does not do
+### Per target: input complex → best clash-free design
+
+The honest unit is the target, not the design. Pooling all 85 designs weights
+each target by how many clash-free models it happened to produce, and one target
+with a 5-residue CDR supplied 5 of the 30. One row per target removes that, and
+a bad target stays visible instead of disappearing into an average.
+
+Burial is also given as a percentage of **that target's own** native loop, since
+an absolute Å² is not comparable between a 5-residue CDR and a 21-residue one.
+
+| target | H3 | clean | loop Å² | %nat | contacts | H-bonds | gap idx | closest Å |
+|---|---|---|---|---|---|---|---|---|
+| 7u9p | 5 | 5/5 | 38 → 62 | 165% | 9 → 28 | 2 → 1 | 11.8 → 8.4 | 2.66 → 2.93 |
+| 7uow | 11 | 2/5 | 171 → 146 | 86% | 26 → 26 | 0 → 0 | 5.2 → 5.0 | 3.40 → 2.91 |
+| 7xst | 11 | 3/5 | 264 → 232 | 88% | 56 → 67 | 4 → 5 | 3.6 → 3.9 | 2.43 → 2.88 |
+| 7wp8 | 12 | 1/5 | 246 → 107 | 44% | 56 → 9 | 3 → 0 | 3.2 → 7.7 | 2.74 → 3.63 |
+| 8jqm | 12 | 3/5 | 141 → 128 | 91% | 71 → 33 | 7 → 1 | 4.8 → 5.3 | 2.90 → 2.89 |
+| 8awm | 13 | 2/5 | 188 → 137 | 73% | 93 → 31 | 6 → 3 | 4.8 → 6.6 | 2.53 → 2.58 |
+| 8bw0 | 13 | 1/5 | 236 → 225 | **95%** | 96 → 72 | 4 → 2 | 3.8 → 4.0 | 2.31 → 2.50 |
+| 8cwk | 14 | 0/5 | — | — | — | — | — | — |
+| 7wn2 | 15 | 2/5 | 250 → 139 | 56% | 88 → 47 | 1 → 0 | 3.7 → 5.2 | 3.27 → 2.93 |
+| 8oxw | 15 | 4/5 | 310 → 208 | 67% | 110 → 62 | 4 → 3 | 4.0 → 6.5 | 2.78 → 2.67 |
+| 7vng | 16 | 4/5 | 220 → 183 | 83% | 93 → 56 | 4 → 1 | 4.0 → 4.9 | 2.60 → 2.76 |
+| 8jio | 16 | 0/5 | — | — | — | — | — | — |
+| 8c3v | 17 | 1/5 | 282 → 284 | **101%** | 115 → 45 | 8 → 1 | 3.4 → 3.7 | 2.45 → 2.87 |
+| 8hes | 18 | 1/5 | 464 → 362 | 78% | 146 → 129 | 10 → 4 | 2.8 → 3.4 | 2.53 → 2.49 |
+| 7x95 | 19 | 0/5 | — | — | — | — | — | — |
+| 7yr0 | 20 | 0/5 | — | — | — | — | — | — |
+| 8g3p | 21 | 1/5 | 647 → 124 | 19% | 226 → 18 | 21 → 1 | 1.7 → 10.0 | 2.62 → 2.81 |
+
+**Burial: median 83% of the native loop** (mean 80%, best 165%), over the 13
+targets that produced a clash-free design — ≥90% on 4, 75–90% on 4, 50–75% on 3.
+`8c3v` matches its native outright; `8bw0` comes within 5%.
+
+**Hydrogen bonds are the clear deficit.** They fall on almost every row —
+8g3p 21→1, 8jqm 7→1, 8c3v 8→1, 8hes 10→4. The graft occupies the site without
+re-forming its chemistry, which is what transplanting a donor sequence unchanged
+would predict: those residues were complementary to a *different* epitope, and
+nothing in the pipeline redesigns them.
+
+**Long CDRs fail hardest.** The four targets with no clash-free design at all
+are H3 14, 16, 19 and 20, and the worst row is the longest (8g3p, H3 21, 19%).
+The stems fix the loop's ends and nothing constrains the middle, so the
+unconstrained span grows with length.
+
+**`%nat` above 100% is not automatically a win.** `7u9p` reads 165% against a
+native loop that buries only 38 Å² — a site the native barely engages. Read that
+row as "there was little to match here".
+
+Reproduce with `python -I 05_per_target.py results/designs.tsv`, which also
+prints the rank-1 and all-five views.
+
+### Pooled over designs, for completeness
 
 Mean ± SD. "Better" means better **for the antibody**: a binder wants more
 buried area, more contacts, more hydrogen bonds and salt bridges, a tight pack
@@ -479,46 +531,29 @@ against the epitope (low gap index), and no interpenetration.
 | | input complex | all 85 designs | the 30 clash-free | better |
 |---|---|---|---|---|
 | buried area (Å²) | 1784 ± 266 | 1752 ± 344 | 1634 ± 272 | higher |
-| loop buried area (Å²) | 287 ± 136 | 270 ± 166 | **141 ± 77** | higher |
-| contacts | 96 ± 48 | 155 ± 225 | **34 ± 28** | higher |
+| loop buried area (Å²) | 287 ± 136 | 270 ± 166 | 141 ± 77 | higher |
+| contacts | 96 ± 48 | 155 ± 225 | 34 ± 28 | higher |
 | contact residues | 6.1 ± 2.2 | 5.7 ± 3.2 | 3.3 ± 2.1 | higher |
 | **clashes** | **0.0 ± 0.0** | **15.5 ± 38.5** | 0.0 ± 0.0 | lower |
-| H-bonds | 5.5 ± 4.6 | 4.6 ± 6.6 | **1.2 ± 1.4** | higher |
+| H-bonds | 5.5 ± 4.6 | 4.6 ± 6.6 | 1.2 ± 1.4 | higher |
 | salt bridges | 0.8 ± 1.7 | 0.1 ± 0.3 | 0.0 ± 0.2 | higher |
 | gap index (Å) | 4.1 ± 2.1 | 6.9 ± 17.8 | 12.7 ± 29.1 | lower |
 | closest approach (Å) | 2.69 ± 0.29 | 2.29 ± 0.81 | 3.04 ± 0.63 | ≈ 2.7 |
 
-(The clash-free column covers the 13 targets that produced one, so its input
-reference is 1765 ± 271 Å² rather than 1784.)
+**Read this table second, and carefully.** The middle column's 155 contacts is
+not a gain: contacts and clashes are the same geometry at two cutoffs (r = 0.98
+across the 85), so it is largely atoms *inside* the antigen — which the clash row
+and the 2.29 Å closest approach confirm. And the right-hand column's 141 Å²
+understates the tool, for the weighting reason above; the per-target median of
+83% is the number to quote.
 
-**It does not produce a better interface than the one it replaces.** The
-crystallographic input is clash-free on all 17 targets and no design matches it.
+**What no reading changes:** the designs do not produce a better interface than
+the one they replace. The crystallographic input is clash-free on all 17 targets.
+A clash-free design beats its own input on contacts in 3 of 13 cases, all three
+where the native interface was unusually small (9, 26 and 56 contacts).
 
-**The contact column in the middle is a trap.** Contacts and clashes are the
-same geometry at two cutoffs (r = 0.98), so the 155 is largely atoms inside the
-antigen — which the clash row and the 2.29 Å closest approach both confirm.
-
-**The right-hand column needs a per-target reading, not a pooled one.** These
-means weight each target by how many clash-free designs it produced, and one
-target with a 5-residue CDR supplied 5 of the 30. Measured per target, the best
-clash-free design reaches a **median 83% of its own native loop's burial**, and
-75% or more on 8 of 13 targets — one matches the native outright. The pooled
-"141 against 266" understates what the tool finds.
-
-What survives both readings is **the hydrogen-bond deficit**: 1.2 against 5.7,
-and down on nearly every target individually (8g3p 21→1, 8jqm 7→1). The graft
-occupies the site but does not re-form its chemistry — expected, since donor
-sequences are transplanted unchanged and nothing redesigns them for this
-epitope.
-
-Asked target by target, a clash-free design beats its own input on contacts in
-3 of 13 cases, all three where the native interface was unusually small (9, 26
-and 56 contacts). The four targets with no clash-free design at all are the
-long CDRs — H3 14, 16, 19 and 20.
-
-So a refinement stage that can drive a loop into contact is required rather
-than optional, and no claim is made here about affinity — these are geometric
-measurements on static structures.
+No claim is made about affinity. These are geometric measurements on static
+structures.
 
 Full numbers, controls and figures: [`example/`](example/).
 
