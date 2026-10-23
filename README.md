@@ -504,19 +504,19 @@ targets that are missing or out of date — so an update takes minutes, not hour
 ## Repository layout
 
 ```
-epifitscout_v2/
+epifitscout_v3/
 ├── check_setup.py              verify the setup
 ├── epifitscout/
 │   ├── types/                  Fragment, AnchorQuery, GraftCandidate, EpitopeSurface
 │   ├── query/builder.py        build the stem query from a complex
 │   ├── master/                 run MASTER, parse matches, place candidates
-│   ├── graft/                  feasibility gate, model assembly, packing
-│   ├── scoring/                SASA and void primitives, interface terms, ranking
-│   ├── pipeline/               graft_pipeline (v2), search_pipeline (v1)
+│   ├── graft/                  feasibility gate, assembly, packing, relax
+│   ├── scoring/                epitope, shape (ranks), collision, interface (reports)
+│   ├── pipeline/               graft_pipeline
 │   ├── tools/                  graft_cdr (v2 CLI), build_complex (v1), view
 │   └── conf/config.yaml
 ├── MASTER/bin/                 ← paste the MASTER binaries here
-├── data/                       ← extract the dataset here
+├── data/                       ← extract the dataset here, see DATA.md
 ├── FASPR/bin/                  ← paste FASPR here
 ├── database_builder/           rebuild or update the dataset
 ├── example/                    1a2y worked example
