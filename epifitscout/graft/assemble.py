@@ -30,6 +30,7 @@ from pathlib import Path
 import numpy as np
 
 from epifitscout.graft import packer as pk
+from epifitscout.graft.relax import relax_side_chains
 from epifitscout.types.candidate import GraftCandidate
 from epifitscout.utils.io import detect_format
 
@@ -181,6 +182,7 @@ class TemplateSite:
         out_path: Path,
         packer_name: str = "FASPR",
         packer_exe: Path | None = None,
+        relax: bool = True,
         shell: float = pk.DEFAULT_REPACK_SHELL,
     ) -> AssembledModel:
         """Graft this candidate into the template and pack its side chains.
@@ -189,6 +191,9 @@ class TemplateSite:
             candidate: A feasible, placed candidate.
             out_path: Where to write the model.
             packer_name: Packer to drive; ``"none"`` writes backbone only.
+            relax: Turn clashing side chains out of the antigen after packing.
+                On by default -- without it the models carry the packer's
+                discrete-rotamer near-misses, which read as clashes.
             packer_exe: Resolved packer path. Looked up when omitted.
             shell: Radius around the graft that is also repacked, in Å.
 
@@ -216,10 +221,25 @@ class TemplateSite:
             exe, packer_name, out_path,
             chain=self.ab_chain, span=self.span, shell=shell,
         )
-        return AssembledModel(
-            path=out_path, packed=ok,
-            problem=None if ok else "the packer rejected this model",
-        )
+        if not ok:
+            return AssembledModel(
+                path=out_path, packed=False,
+                problem="the packer rejected this model",
+            )
+
+        # The packer chooses from discrete rotamers against a looser tolerance
+        # than the scorer applies, so what it leaves is a field of near-misses.
+        # Turning the chi angles of clashing side chains costs a few seconds
+        # and preserves every bond length and angle exactly.
+        if relax:
+            lines, n_turned = relax_side_chains(
+                out_path.read_text().splitlines(keepends=True),
+                self.ab_chain, self.span, self.antigen_chains,
+            )
+            if n_turned:
+                out_path.write_text("".join(lines))
+
+        return AssembledModel(path=out_path, packed=True, problem=None)
 
 
 def write_graft(

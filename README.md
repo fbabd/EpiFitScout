@@ -227,26 +227,55 @@ can be reported as evidence about the ranking. v1 ranked on contact with the
 nominated epitope and reported epitope-F1 — contact with the intended epitope —
 as a result.
 
-### What is measured, and what is not yet
+### What the benchmark says
 
-v2's comparison against the input complexes it grafts into is the benchmark v3
-inherits: 17 complexes spanning CDR-H3 lengths 5–21, five designs each, the
-input complex scored by the same scorer at the same span. v2's result was
-unambiguous and bad — the rank-1 model lost to the input complex on every term,
-and 0 of 17 targets produced a design mean that clashed less than the crystal
-structure.
+17 complexes spanning CDR-H3 lengths 5–21, five designs each, the input complex
+scored by the same scorer at the same span. The comparison is against **the
+bound complex being grafted into** — the one reference that needs no second
+model and no matched budget, because the loop was there and it worked.
 
-**v3 has not yet been run on that benchmark.** The ranking changed, the sign bug
-was fixed, and whether either moves the clash result is an open question that
-the rerun answers. Do not quote v2's numbers for v3, and do not assume the fix
-helps until it is measured — the honest prior is that the clash-free candidates
-v2 found were also the ones barely touching the antigen (30 contacts against the
-inputs' 96), and a better-aimed selector can only choose among the loops the
-search returned.
+Per-target mean of five designs:
 
-What the sign fix changes is narrower and certain: the depth term now orders
-complementary loops above interpenetrating ones instead of below. That makes the
-term able to discriminate; it does not make the candidate pool better.
+| | input complex | v2 | v3 (shape only) | v3 (shape + gate) |
+|---|---|---|---|---|
+| clashes | **0.0** | 25.0 | 52.2 | 21.3 |
+| closest approach (Å) | **2.69** | 1.85 | 1.43 | 1.99 |
+| buried area (Å²) | 1784 | 1727 | 1810 | 1741 |
+| contacts | 96 | 188 | 315 | 164 |
+| clash-free designs | — | 9/85 | 10/85 | **18/85** |
+| targets with one | — | 6/17 | 6/17 | **8/17** |
+
+**Shape ranking alone made it worse.** Clashes doubled against v2 (2.2 s.e.) and
+closest approach fell to 1.43 Å. The depth correlation has no steric content and
+is maximised by pressing the loop into the surface, so nothing opposed
+interpenetration: 47 of 85 models carried more than twenty clashes. Adding the
+collision counterweight recovered it — clashes 52.2 → 21.3 (3.3 s.e.), closest
+approach 1.43 → 1.99 Å (4.0 s.e.).
+
+**Against v2 the averages are a wash.** Every mean difference is under 1 s.e.
+The real gain is yield: clash-free designs double, 9/85 to 18/85, and targets
+with at least one usable model go 6/17 to 8/17 (7 targets improved, 1 worse, 9
+tied).
+
+**A contact gain is not a binding gain.** Contacts and clashes are the same
+geometry at two cutoffs and correlate at r = 0.98 across 85 designs, so a loop
+driven into the antigen scores more of both. Regressing contacts on clashes, the
+intercept — contact made at *zero* clashes — is the number that means anything:
+
+    v2           contacts = 71.6 + 4.67 × clashes
+    v3 gated     contacts = 54.5 + 5.12 × clashes
+    input complexes average 96 contacts at 0 clashes
+
+**What is not solved.** Clean models are clean because they barely touch: v3's
+clash-free designs average 26 contacts against the inputs' 96. Ranking cannot
+fix that — it chooses among retrieved loops, and no retrieved loop in these
+pools both avoids the antigen and buries like the native. That needs a
+relaxation stage, not a better selector. 61% of clashes are side-chain-only at
+median 0.43 Å overlap, which a backbone gate cannot see and discrete-rotamer
+packing leaves behind.
+
+**No design in any version beats the input complex on mean interface quality.**
+Do not read the table as saying otherwise.
 
 ---
 ## Usage

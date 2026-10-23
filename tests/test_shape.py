@@ -136,3 +136,53 @@ class TestTheStericCounterweight:
         ordered = _order(all_bad)
         assert len(ordered) == 3
         assert [c.shape.score for c in ordered] == [0.8, 0.5, 0.3]
+
+
+class TestSideChainRelaxation:
+    """Turning chi angles must relieve clashes without breaking chemistry."""
+
+    def test_rotation_preserves_bond_geometry_exactly(self) -> None:
+        """The property that makes this safe where Cartesian moves are not.
+
+        Rotating about a bond is rigid: every interatomic distance within the
+        moved group, and every distance to the axis, is unchanged.
+        """
+        from epifitscout.graft.relax import _rotate
+        rng = np.random.default_rng(0)
+        pts = rng.normal(size=(6, 3)) * 3
+        origin, axis = rng.normal(size=3), rng.normal(size=3)
+        before = np.linalg.norm(pts[:, None] - pts[None], axis=-1)
+        for deg in (10.0, 90.0, 180.0, 347.0):
+            out = _rotate(pts, origin, axis, deg)
+            after = np.linalg.norm(out[:, None] - out[None], axis=-1)
+            assert np.allclose(before, after, atol=1e-9)
+            assert np.allclose(
+                np.linalg.norm(pts - origin, axis=1),
+                np.linalg.norm(out - origin, axis=1), atol=1e-9,
+            )
+
+    def test_a_full_turn_is_the_identity(self) -> None:
+        from epifitscout.graft.relax import _rotate
+        rng = np.random.default_rng(1)
+        pts = rng.normal(size=(4, 3))
+        assert np.allclose(
+            _rotate(pts, rng.normal(size=3), rng.normal(size=3), 360.0), pts
+        )
+
+    def test_glycine_and_alanine_have_nothing_to_turn(self) -> None:
+        """No chi bonds means the residue is skipped, not mishandled."""
+        from epifitscout.graft.relax import CHI_ATOMS
+        assert "GLY" not in CHI_ATOMS
+        assert "ALA" not in CHI_ATOMS
+        assert "PRO" not in CHI_ATOMS   # ring: chi is not freely rotatable
+
+    def test_no_antigen_means_no_change(self) -> None:
+        """With nothing to clash against, the model is returned untouched."""
+        from epifitscout.graft.relax import relax_side_chains
+        lines = [
+            "ATOM      1  N   ARG H 105      10.000  10.000  10.000  1.00  0.00           N\n",
+            "ATOM      2  CA  ARG H 105      11.000  10.000  10.000  1.00  0.00           C\n",
+        ]
+        out, n = relax_side_chains(lines, "H", (105, 105), ("Z",))
+        assert n == 0
+        assert out == lines

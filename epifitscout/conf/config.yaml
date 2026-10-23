@@ -63,6 +63,13 @@ epitope_cutoff: 4.5   # antigen heavy atom within this of the CDR, Å
 # This orders rather than gates -- a target whose candidates all collide still
 # gets an answer, and the result records how many were clear.
 collision_cutoff: 2.0  # loop backbone nearer than this is interpenetration, Å
+
+# FASPR picks from discrete rotamers against a looser tolerance than the scorer
+# applies, so it leaves near-misses: 61% of clashing pairs were side-chain only,
+# at a median overlap of 0.43 Å. Turning the chi angles of those side chains
+# costs a few seconds per model and preserves bond lengths and angles exactly.
+# It cannot help a loop whose backbone is inside the antigen.
+relax_side_chains: true
 shape:
   weight_depth: 0.7   # depth-profile correlation with the epitope
   weight_tau: 0.3     # backbone-torsion correlation

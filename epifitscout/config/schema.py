@@ -150,6 +150,8 @@ class PipelineConfig:
     #: Loop backbone within this of the antigen is interpenetration, in
     #: A. Calibrated on 86 natives, whose closest approach is 2.12 A.
     collision_cutoff: float = 2.0
+    #: Turn clashing side chains out of the antigen after packing.
+    relax_side_chains: bool = True
     #: Candidates returned after the final ranking.
     top_k: int = 10
     #: Stem length, in residues, taken on each side of the CDR for the query.

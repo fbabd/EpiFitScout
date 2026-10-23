@@ -259,7 +259,8 @@ class GraftPipeline:
             i, candidate = indexed
             path = models_dir / f"{i:03d}_{candidate.donor}.pdb"
             model = site.assemble(
-                candidate, path, packer_name=packer_name, packer_exe=exe
+                candidate, path, packer_name=packer_name, packer_exe=exe,
+                relax=self._cfg.relax_side_chains,
             )
             candidate.metadata["packed"] = model.packed
             if not model.packed and packer_name != "none":
