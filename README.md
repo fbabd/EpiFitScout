@@ -498,16 +498,23 @@ crystallographic input is clash-free on all 17 targets and no design matches it.
 same geometry at two cutoffs (r = 0.98), so the 155 is largely atoms inside the
 antigen — which the clash row and the 2.29 Å closest approach both confirm.
 
-**The right-hand column is the honest one, and it is worse.** Keep only the
-sterically valid designs and every term moves against them: the loop buries half
-the native's area, makes a third of its contacts, and makes essentially no
-hydrogen bonds. Closest approach rises *above* the native's 2.71 Å and the gap
-index triples. The clash-free designs are valid because they **stand off the
-epitope** — they touch less, rather than fitting better.
+**The right-hand column needs a per-target reading, not a pooled one.** These
+means weight each target by how many clash-free designs it produced, and one
+target with a 5-residue CDR supplied 5 of the 30. Measured per target, the best
+clash-free design reaches a **median 83% of its own native loop's burial**, and
+75% or more on 8 of 13 targets — one matches the native outright. The pooled
+"141 against 266" understates what the tool finds.
+
+What survives both readings is **the hydrogen-bond deficit**: 1.2 against 5.7,
+and down on nearly every target individually (8g3p 21→1, 8jqm 7→1). The graft
+occupies the site but does not re-form its chemistry — expected, since donor
+sequences are transplanted unchanged and nothing redesigns them for this
+epitope.
 
 Asked target by target, a clash-free design beats its own input on contacts in
 3 of 13 cases, all three where the native interface was unusually small (9, 26
-and 56 contacts).
+and 56 contacts). The four targets with no clash-free design at all are the
+long CDRs — H3 14, 16, 19 and 20.
 
 So a refinement stage that can drive a loop into contact is required rather
 than optional, and no claim is made here about affinity — these are geometric
