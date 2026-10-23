@@ -472,27 +472,46 @@ than as finished designs.
 
 ### What it does not do
 
-| | input complex | designs (mean of 5) |
-|---|---|---|
-| buried area (Å²) | 1784 | 1752 |
-| contacts | 96 | 155 |
-| **clashes** | **0.0** | **15.5** |
+Mean ± SD. "Better" means better **for the antibody**: a binder wants more
+buried area, more contacts, more hydrogen bonds and salt bridges, a tight pack
+against the epitope (low gap index), and no interpenetration.
+
+| | input complex | all 85 designs | the 30 clash-free | better |
+|---|---|---|---|---|
+| buried area (Å²) | 1784 ± 266 | 1752 ± 344 | 1634 ± 272 | higher |
+| loop buried area (Å²) | 287 ± 136 | 270 ± 166 | **141 ± 77** | higher |
+| contacts | 96 ± 48 | 155 ± 225 | **34 ± 28** | higher |
+| contact residues | 6.1 ± 2.2 | 5.7 ± 3.2 | 3.3 ± 2.1 | higher |
+| **clashes** | **0.0 ± 0.0** | **15.5 ± 38.5** | 0.0 ± 0.0 | lower |
+| H-bonds | 5.5 ± 4.6 | 4.6 ± 6.6 | **1.2 ± 1.4** | higher |
+| salt bridges | 0.8 ± 1.7 | 0.1 ± 0.3 | 0.0 ± 0.2 | higher |
+| gap index (Å) | 4.1 ± 2.1 | 6.9 ± 17.8 | 12.7 ± 29.1 | lower |
+| closest approach (Å) | 2.69 ± 0.29 | 2.29 ± 0.81 | 3.04 ± 0.63 | ≈ 2.7 |
+
+(The clash-free column covers the 13 targets that produced one, so its input
+reference is 1765 ± 271 Å² rather than 1784.)
 
 **It does not produce a better interface than the one it replaces.** The
-crystallographic input is clash-free on all 17 targets and no design mean
-matches it. Asking the question the other way — does *any* clash-free design
-beat its own input on contacts — the answer is 3 of 17 targets, and all three
-are targets whose native interface was unusually small (9, 26 and 56 contacts).
-Where the native buries a real interface, the designs do not reach it.
+crystallographic input is clash-free on all 17 targets and no design matches it.
 
-**The contact column is a trap.** Contacts and clashes are the same geometry at
-two cutoffs and correlate at r = 0.98 across the 85 designs, so a loop driven
-into the antigen scores more of both. The designs' 155 is mostly interpenetration,
-not binding. Judge by contact at *zero* clashes, which is 67 against the inputs'
-96 — clean models still bury less than the native loop.
+**The contact column in the middle is a trap.** Contacts and clashes are the
+same geometry at two cutoffs (r = 0.98), so the 155 is largely atoms inside the
+antigen — which the clash row and the 2.29 Å closest approach both confirm.
 
-No claim is made about affinity. These are geometric measurements on static
-structures.
+**The right-hand column is the honest one, and it is worse.** Keep only the
+sterically valid designs and every term moves against them: the loop buries half
+the native's area, makes a third of its contacts, and makes essentially no
+hydrogen bonds. Closest approach rises *above* the native's 2.71 Å and the gap
+index triples. The clash-free designs are valid because they **stand off the
+epitope** — they touch less, rather than fitting better.
+
+Asked target by target, a clash-free design beats its own input on contacts in
+3 of 13 cases, all three where the native interface was unusually small (9, 26
+and 56 contacts).
+
+So a refinement stage that can drive a loop into contact is required rather
+than optional, and no claim is made here about affinity — these are geometric
+measurements on static structures.
 
 Full numbers, controls and figures: [`example/`](example/).
 

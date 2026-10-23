@@ -55,32 +55,67 @@ real crystallographic conformations rather than generated ones. Most targets
 yield several that are sterically valid. That is the useful output: a diverse,
 checked set of starting points to refine or to seed a generative stage.
 
-### What it is not
+### Measured against the complex they replace
 
-| | input complex | designs (mean of 5) | |
+Mean ± SD. "Better" throughout means better **for the antibody** — a binder
+wants to bury more surface, make more contacts, more hydrogen bonds and more
+salt bridges, pack tightly against the epitope (low gap index) and not
+interpenetrate it (no clashes).
+
+**All 85 designs, 17 targets:**
+
+| | input complex | designs | better for a binder |
 |---|---|---|---|
-| buried area (Å²) | 1784 | 1752 | 0.7 s.e. |
-| contacts | 96 | 155 | 1.4 s.e. |
-| **clashes** | **0.0** | **15.5** | **2.1 s.e. against** |
-| H-bonds | 5.5 | 4.6 | 0.6 s.e. |
-| salt bridges | 0.8 | 0.1 | 1.8 s.e. against |
+| buried area (Å²) | 1784 ± 266 | 1752 ± 344 | higher |
+| loop buried area (Å²) | 287 ± 136 | 270 ± 166 | higher |
+| contacts | 96 ± 48 | 155 ± 225 | higher |
+| contact residues | 6.1 ± 2.2 | 5.7 ± 3.2 | higher |
+| **clashes** | **0.0 ± 0.0** | **15.5 ± 38.5** | **lower** |
+| H-bonds | 5.5 ± 4.6 | 4.6 ± 6.6 | higher |
+| salt bridges | 0.8 ± 1.7 | 0.1 ± 0.3 | higher |
+| gap index (Å) | 4.1 ± 2.1 | 6.9 ± 17.8 | lower |
+| closest approach (Å) | 2.69 ± 0.29 | 2.29 ± 0.81 | ≈ 2.7, not lower |
 
-**The designs do not beat the input complex.** It is clash-free on all 17
-targets and no design mean matches it. Read nothing here as "better
-antibodies".
+The contact column reads as a win and is not one. Contacts and clashes are the
+same geometry at two cutoffs (r = 0.98), so the 155 is mostly atoms *inside* the
+antigen. The clash row and the closest approach row say the same thing: 2.29 Å
+is below what any real interface does.
 
-**The contact gain is not a binding gain.** Contacts and clashes are the same
-geometry at two cutoffs and correlate at r = 0.98, so a loop driven into the
-antigen scores more of both. Contact at *zero* clashes — the regression
-intercept — is 67 against the input complexes' 96.
+**The 30 clash-free designs, 13 targets** — the sterically valid subset:
 
-**Asked target by target**, does any clash-free design beat its own input on
-contacts? Three of seventeen, and all three are targets whose native interface
-was unusually small (9, 26 and 56 contacts). Where the native buries a real
-interface — 88 to 226 contacts — the designs do not reach it.
+| | input complex | clash-free designs | better for a binder |
+|---|---|---|---|
+| buried area (Å²) | 1765 ± 271 | 1634 ± 272 | higher |
+| loop buried area (Å²) | 266 ± 145 | **141 ± 77** | higher |
+| contacts | 91 ± 53 | **34 ± 28** | higher |
+| contact residues | 5.7 ± 2.2 | 3.3 ± 2.1 | higher |
+| clashes | 0.0 ± 0.0 | 0.0 ± 0.0 | lower |
+| H-bonds | 5.7 ± 5.2 | **1.2 ± 1.4** | higher |
+| salt bridges | 0.9 ± 1.9 | 0.0 ± 0.2 | higher |
+| gap index (Å) | 4.4 ± 2.3 | 12.7 ± 29.1 | lower |
+| closest approach (Å) | 2.71 ± 0.31 | 3.04 ± 0.63 | ≈ 2.7, not higher |
 
-Nothing here is a claim about affinity. These are geometric measurements on
-static structures.
+**This is the table that matters, and it is the unflattering one.** Remove the
+clashing models and every term moves against the designs: the loop buries about
+half the native's area, makes a third of its contacts, and makes essentially no
+hydrogen bonds — 1.2 against 5.7. The gap index more than doubles and closest
+approach rises *above* the native's 2.71 Å.
+
+That is the mechanism stated plainly: **the sterically valid designs are valid
+because they stand off the epitope.** A binder wants to be at ~2.7 Å and in
+contact; these sit further out and touch less. Clash-free is necessary, not
+sufficient.
+
+Two things to keep in mind reading the second table. It is a **selected subset**,
+so it estimates nothing in an unbiased way — selecting on clashes = 0
+preferentially keeps loops that stand off, which is the bias the numbers show.
+And it covers **13 targets, not 17**, so the input column shifts slightly as the
+four targets with no clean design drop out.
+
+**What follows from it.** The grafted loops are usable starting points and not
+interfaces: a refinement stage that can drive a loop into contact — rigid-body
+and backbone, which side-chain relaxation alone cannot do — is required, not
+optional.
 
 ## Two controls worth knowing about
 

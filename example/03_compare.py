@@ -79,6 +79,49 @@ def fnum(row: dict | None, key: str) -> float | None:
     return v if math.isfinite(v) else None
 
 
+#: Which way is better *for the antibody*. A binder wants to bury more surface,
+#: touch more of the epitope, make more polar contacts and pack tightly against
+#: it without interpenetrating. ``min_distance`` has no direction: a real
+#: interface sits near 2.7 A, and both a smaller and a larger value are wrong.
+BETTER = {
+    "buried_area": "higher", "loop_buried_area": "higher",
+    "contacts": "higher", "contact_residues": "higher",
+    "clashes": "lower", "hbonds": "higher", "salt_bridges": "higher",
+    "gap_volume": "lower", "gap_index": "lower",
+    "min_distance": "~2.7 A",
+}
+
+
+def spread_table(per: dict, reference: str, clean_only: bool) -> None:
+    """Mean +/- SD per metric, input against designs.
+
+    Printed for all designs and again for the clash-free subset, because the
+    two tell opposite stories and only the second is about structures anyone
+    would use. The subset is selected on an outcome, so it estimates nothing
+    in an unbiased way -- it is reported as what it is.
+    """
+    def keep(ds: list[dict]) -> list[dict]:
+        if not clean_only:
+            return ds
+        return [d for d in ds if fnum(d, "clashes") == 0]
+
+    targets = [c for c, s in per.items() if keep(s["designs"]) and reference in s]
+    n_designs = sum(len(keep(per[c]["designs"])) for c in targets)
+    label = "clash-free designs only" if clean_only else "all designs"
+    print(f"\n{label}: {len(targets)} targets, {n_designs} designs")
+    print(f"{'metric':<24}{'input':>18}{'designs':>18}  better")
+    for metric, direction in BETTER.items():
+        ref = [v for c in targets if (v := fnum(per[c][reference], metric)) is not None]
+        dsg = [v for c in targets for d in keep(per[c]["designs"])
+               if (v := fnum(d, metric)) is not None]
+        if not ref or not dsg:
+            continue
+        dp = 2 if metric == "min_distance" else (1 if max(ref) < 50 else 0)
+        print(f"{LABEL.get(metric, metric):<24}"
+              f"{st.mean(ref):>11.{dp}f} ±{st.pstdev(ref):>5.{dp}f}"
+              f"{st.mean(dsg):>11.{dp}f} ±{st.pstdev(dsg):>5.{dp}f}  {direction}")
+
+
 def diversity(per: dict, selected: Path | None) -> None:
     """What the tool returns, as distinct from how well it scores.
 
@@ -209,6 +252,14 @@ def main() -> int:
             "diff": mu, "se": se, "se_units": units,
             "better_direction": sign, "n_better": better if better is not None else "",
         })
+
+    spread_table(usable, args.reference, clean_only=False)
+    spread_table(usable, args.reference, clean_only=True)
+    print("\n'better' is better for the antibody: a binder buries more surface, "
+          "touches more\nof the epitope and makes more polar contacts, packs "
+          "tightly (low gap index) and\ndoes not interpenetrate. The clash-free "
+          "table is a subset selected on an outcome,\nso it is descriptive, "
+          "not an unbiased estimate.")
 
     diversity(usable, Path(args.selected))
     beats_its_own_input(usable, args.reference)
