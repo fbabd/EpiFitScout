@@ -22,7 +22,9 @@ from collections.abc import Callable, Sequence
 _COMMANDS: dict[str, tuple[str, str]] = {
     "check": ("Verify the setup: MASTER, the database, and the optional packer.",
               "epifitscout.tools.setup_check"),
-    "graft": ("Retrieve, graft and rank real CDR loops for one complex.",
+    "search": ("Retrieve and rank real CDR loops for one site. No packer needed.",
+               "epifitscout.tools.search_cdr"),
+    "graft": ("The same, then build and measure all-atom models. Needs FASPR.",
               "epifitscout.tools.graft_cdr"),
 }
 

@@ -44,5 +44,3 @@ htmlcov/
 .vscode/
 *.swp
 
-# data/ is a symlink to the shared dataset on this machine; see DATA.md
-/data

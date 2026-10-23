@@ -1,106 +1,129 @@
-# EpiFitScout v3
+# EpiFitScout
 
-Retrieval and grafting of real CDR loops, ranked by how their backbone
-complements the epitope — before anything is packed.
+Search ~25,000 real antibody chains for CDR loops that fit an epitope, and rank
+them by how their backbone complements it.
 
-Give it a bound antibody–antigen complex and say which CDR to replace. It
-searches ~25,000 antibody chains from SAbDab for loops that can bridge that
-site, scores each placed loop against the epitope, and packs and measures only
-the ones it is going to hand back.
+Give it a bound antibody–antigen complex and say which CDR to replace. It finds
+loops that can bridge that exact gap, places each one, and ranks them by shape
+complementarity against the epitope — all on backbone coordinates, before
+anything is built.
 
 ```
-complex ──▶ CDR site ──▶ graft() ──▶ ranked all-atom models
-                            │
-                            ├─ 1. search    two framework stems as a MASTER query,
-                            │               --gapLen fixed to the loop's length
-                            ├─ 2. place     fit each donor's stems onto the template's
-                            ├─ 3. gate      are the two new peptide bonds real bonds?
-                            ├─ 4. epitope   antigen residues within 4.5 Å of the
-                            │               template's own CDR
-                            ├─ 5. rank      shape complementarity of the placed
-                            │               backbone against that epitope  ← decides
-                            └─ 6. build     pack the chosen few (FASPR) and measure
-                                            BSA, contacts, H-bonds, clashes, void
+bound complex + CDR span + antigen chain
+      │
+ 1. query      two framework stems either side of the CDR (4 residues each).
+               The CDR's own coordinates are never in the query.
+ 2. search     MASTER over 25,226 SAbDab chains, --gapLen fixed to the
+               loop's length → loops that can bridge that exact gap
+ 3. place      superpose each donor's stems onto the template's stems
+ 4. gate       are the two new peptide bonds real bonds?
+ 5. epitope    antigen residues within 4.5 Å of the template's own CDR
+ 6. score      shape complementarity, backbone only:
+               0.7 × depth-profile correlation + 0.3 × torsion correlation
+ 7. collision  loop backbone atoms within 2.0 Å of antigen
+ 8. rank       sort by (no collision, then shape score)   ← THE TOOL ENDS HERE
+      ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+ 9. build      graft the chosen loop in, pack side chains (FASPR)   ] example,
+10. relax      turn clashing side chains out of the antigen         ] and
+11. measure    BSA, contacts, H-bonds, salt bridges, clashes, void  ] reusable
 ```
 
-**The ranking happens before the packing.** Stage 5 sees backbone coordinates
-and the epitope, nothing else. Stage 6 then builds only the `top_k` models that
-will be reported, so the expensive all-atom work scales with how many models you
-ask for rather than with how many loops the search returned.
+**Stages 1–8 are EpiFitScout.** They need MASTER and the chain database, and
+they return ranked fragments:
 
-**The interface numbers never rank anything.** They are measurements of the
-models that stage 5 chose, which is what leaves them usable as evidence *about*
-the ranking rather than a restatement of it.
+```python
+import epifitscout
+result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+for c in result.top:
+    print(c.source, c.sequence, c.shape.describe())
+```
 
-**The CDR's own coordinates are never part of the query.** Only the framework
-either side of it. The epitope is located by proximity to the template's CDR —
-that reads the native coordinates, but only to decide which antigen residues to
-score against, and nothing from it reaches MASTER.
+**Stages 9–11 build and measure models** from that ranking. They are a worked
+example rather than a design protocol, they additionally need FASPR, and they
+live in `epifitscout.build`:
 
-## What changed from v2
+```python
+result = epifitscout.graft("7abc.pdb", "H", (95, 102), ("A",), out_dir="models")
+```
 
-v2 ranked on `contact_fit`, a backbone contact count against the whole antigen.
-Measured against the input complexes it was grafting into, it produced models
-that clashed in **every one of 17 targets** (mean 25 clashes against the input's
-0) while appearing to gain contacts — an artefact, since contacts and clashes
-correlate at r = 0.98 and are the same geometry at two cutoffs.
-
-v3 replaces that selection entirely. All of v2's ranking is gone: no
-`contact_fit`, no `clean_first`, no promotion of clash-free models. What ranks
-is the epitope shape score, restored from v1 and **corrected**.
-
-### The v1 sign bug
-
-v1's depth term was negated, on the reasoning that a CDR bulge should meet an
-epitope recess and so the profiles should be anti-correlated. The geometry does
-not work that way: both profiles are projected onto the *same* CDR→epitope
-normal, so a bulge and the recess it nests into both lie further along it, and
-complementary surfaces are **correlated**. On three synthetic pairs whose answer
-is not in doubt:
-
-| | pearson(depth) | gap std |
-|---|---|---|
-| loop nests perfectly | +1.00 | 0.00 Å |
-| flat lid over a bowl | 0.00 | 0.70 Å |
-| opposite curvature | −1.00 | 1.39 Å |
-
-Negated, that ranking is exactly inverted — v1 was scoring interpenetrating
-loops highest. This is a sufficient explanation for v1's own finding that its
-epitope term "does nothing measurable", and it is why that finding does not
-carry over. `tests/test_shape.py` fails if the sign flips back.
+The ranking is identical either way — building a model never reorders anything.
+That is deliberate: it is what leaves the all-atom numbers usable as evidence
+*about* the ranking instead of a restatement of it. See [`example/`](example/)
+for what those numbers say, including where they are unflattering.
 
 **Requires:** Linux x86-64 (MASTER's binaries are Linux-only), Python ≥ 3.10,
-about 6 GB of disk.
+about 26 GB of disk for the database.
 
----
+## Two things to know before trusting a result
+
+**Shape alone is not enough, and the pair is the point.** The depth correlation
+has no steric content — it is *maximised* by pressing a loop into the surface.
+Ranked on shape alone, clashes doubled and 47 of 85 models carried more than
+twenty. Stage 7 is the counterweight, and it orders rather than excludes, so a
+target whose candidates all collide still gets an answer.
+
+**A contact gain is not a binding gain.** Contacts and clashes are the same
+geometry at two cutoffs (r = 0.98 across 85 designs). Judge a model by contact
+made at *zero* clashes, not by raw contact count.
 
 ## Setup
+
+### What is in the repository, and what is not
+
+Three things are too large or not ours to redistribute, so you add them once.
+Each has a folder with its own instructions:
+
+| What | Where it goes | Needed for | Instructions |
+|---|---|---|---|
+| **Chain database** `epifitscout-database-v1.0.0.tar.xz` (645 MB → 25 GB) | `data/` | everything | [`data/README.md`](data/README.md) |
+| **MASTER** binaries `master-bin-v1.6.tar.gz` (13 MB) | `MASTER/` → `MASTER/bin/` | everything | [`MASTER/README.md`](MASTER/README.md) |
+| **FASPR** (build from source, ~14 MB) | `FASPR/` → `FASPR/bin/` | stages 9–11 only | [`FASPR/README.md`](FASPR/README.md) |
+
+**FASPR is optional if you only want to search.** Stages 1–8 rank fragments on
+backbone coordinates and never pack anything, so `check` reports a missing FASPR
+as `[--]` rather than `[FAIL]` and still says `Ready.`
+
+### Install
 
 ```bash
 git clone https://github.com/fbabd/EpiFitScout
 cd EpiFitScout
-pip install -e .                  # the -e matters, see the note below
+pip install -e .                  # the -e matters, see below
+pip install -e ".[examples]"      # only if you will run example/
 ```
 
-Then add the things that are not in the repository. Each has its own folder
-with step-by-step instructions:
+> **Why `pip install -e .`?** EpiFitScout finds `MASTER/bin/` and `data/` by
+> their position next to the code. A regular `pip install .` copies the code
+> away from them; the editable install keeps it in the clone.
 
-| | Put it in | Instructions |
-|---|---|---|
-| **MASTER** binaries (`master-bin-v1.6.tar.gz`) | [`MASTER/`](MASTER/README.md) (becomes `MASTER/bin/`) | download, `tar -xzf … -C MASTER/`, `chmod +x` |
-| **Dataset** (`epifitscout-database-v*.tar.xz`) | [`data/`](data/README.md) | download, `tar -xJf … -C data/` |
-| **FASPR** (build from source) | [`FASPR/`](FASPR/README.md) (becomes `FASPR/bin/`) | build with `g++ -O3 -o FASPR src/*.cpp`, copy it and `dun2010bbdep.bin` into `FASPR/bin/` |
+### Add the three pieces
 
-FASPR was optional in v1. **In v2 it is required for results**: stage 5 measures
-an all-atom interface, and without a packer the models are backbone-only at the
-graft, which reads as a loose interface on every term. `--packer none` still
-runs, for diagnostics.
+```bash
+# 1. the database — verify the checksum first, a truncated archive
+#    unpacks silently and fails later, mid-search
+sha256sum -c SHA256SUMS
+tar -xJf epifitscout-database-v1.0.0.tar.xz -C data/
 
-> ⚠️ **The dataset is not on Zenodo yet.** Until the deposit is live, build it
-> with [`database_builder/`](database_builder/README.md) — it pulls from SAbDab
-> and RCSB and produces the same layout, taking a few hours, mostly download.
+# 2. MASTER
+tar -xzf master-bin-v1.6.tar.gz -C MASTER/
+chmod +x MASTER/bin/*
 
-Then check:
+# 3. FASPR — build outside this repo, the clone shares the folder name
+cd /tmp && git clone https://github.com/tommyhuangthu/FASPR.git
+cd FASPR && g++ -O3 -o FASPR src/*.cpp
+mkdir -p <repo>/FASPR/bin
+cp FASPR dun2010bbdep.bin <repo>/FASPR/bin/
+```
+
+You should end up with:
+
+```
+data/sabdab_chains.db/{pdb,pds}/      25226 files each
+MASTER/bin/{master,createPDS}
+FASPR/bin/{FASPR,dun2010bbdep.bin}    both, in the same directory
+```
+
+### Check
 
 ```bash
 epifitscout check --search        # or: python check_setup.py --search
@@ -112,17 +135,66 @@ epifitscout check --search        # or: python check_setup.py --search
 [ok]   database   /…/epifitscout/data/sabdab_chains.db
        25226 searchable chains (25226 coordinate files, 25226 search targets)
 [ok]   FASPR      /…/epifitscout/FASPR/bin/FASPR
+[ok]   search      retrieved=499 feasible=317 pooled=5 returned=3 in 185s
 Ready.
 ```
 
-If something is in the wrong place, the FAIL line says which folder it expected
-and what to run.
-
-> **Why `pip install -e .`?** EpiFitScout finds `MASTER/bin/` and `data/` by
-> their position next to the code. A regular `pip install .` copies the code
-> away from them. The editable install keeps it in the clone.
+`--search` runs a real query end to end, which is the only thing that proves the
+search targets are usable; it takes about three minutes. Without it the check
+only confirms the files are in place. If something is misplaced, the `[FAIL]`
+line names the folder it expected and what to run.
 
 ---
+
+## Running it
+
+### Search: rank fragments (stages 1–8)
+
+```bash
+epifitscout search \
+    --structure 7abc.pdb \
+    --cdr H 95 102 \
+    --antigen A
+```
+
+```python
+import epifitscout
+result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+for c in result.top:
+    print(c.source, c.sequence, c.shape.describe(), c.n_collide)
+```
+
+No packer needed, nothing written to disk.
+
+### Graft: build and measure models (adds stages 9–11)
+
+```bash
+epifitscout graft \
+    --structure 7abc.pdb \
+    --cdr H 95 102 \
+    --antigen A \
+    --out-dir models
+```
+
+```python
+result = epifitscout.graft("7abc.pdb", "H", (95, 102), ("A",), out_dir="models")
+for c in result.top:
+    print(c.source, c.sequence, c.interface.describe())
+```
+
+Needs FASPR. The order of `result.top` is the same as `search` would give —
+building never reorders anything.
+
+### What to pass
+
+`--cdr` takes the chain and the first and last residue numbers of the loop to
+replace, **as numbered in your file**. State it explicitly when comparing
+against another method: IMGT and Chothia CDR-H3 differ by two residues, and left
+alone that has the two methods designing different windows.
+
+`--antigen` takes the chain(s) treated as antigen. The epitope is then found
+automatically, as the antigen residues within 4.5 Å of the template's own CDR.
+
 
 ## Quick start
 
@@ -176,108 +248,6 @@ though they matched.
 
 ---
 
-## What changed in v2, and why (background)
-
-v1 searched with the CDR loop itself. Four consequences followed, and v2 is the
-set of changes that remove them.
-
-**The query was the answer.** Every hit was within the RMSD cutoff of the native
-loop by construction, so CA RMSD, DockQ, Fnat and iRMSD measured the query:
-`rmsd_to_native == rmsd_to_query` to four decimal places on every row of the v1
-benchmark. v2 queries the two framework stems as disjoint MASTER segments with
-`--gapLen` fixed to the loop's length, which asks for every real loop that can
-bridge the gap and never shows the search an answer.
-
-**Long loops returned nothing.** A single-segment query needs the whole loop to
-superpose within the cutoff, and the number of real loops meeting that falls
-away as the loop lengthens: 10 of 101 benchmark complexes returned nothing, all
-CDR-H3 ≥ 15. A stem query needs only the stems to match, so retrieval depth is
-set by framework geometry instead — a 22-residue gap that returned nothing
-single-segment returns ~16,000 candidates.
-
-**Nothing checked that a graft could be built.** v1 measured junction geometry
-after ranking, on the few models it had already chosen, and printed a warning.
-v2 measures both junctions before anything expensive and rejects: bond length,
-both bond angles, the omega dihedral, and collisions with the antibody's own
-framework. On a real search 60% pass, with junction bonds at 1.25 and 1.29 Å
-against the ideal 1.329 — and a native loop put back in its own site passes with
-near-ideal geometry, which is the calibration that keeps the gate from being too
-strict.
-
-**Scoring came before packing.** Complementarity is a side-chain property, and
-v1 ranked on backbone-to-antigen distance with no side chains at all. Its
-epitope term reordered candidates without improving any measured property and
-cost sequence recovery (p = 0.016 at n = 101). v2 packs every pooled candidate
-all-atom first, then measures buried area, contacts, hydrogen bonds, salt
-bridges, element-aware clashes and the void volume trapped between loop and
-epitope.
-
-Two smaller changes matter as much:
-
-**Terms are z-scored within each target's own pool.** Every interface term's
-scale is set by the epitope, so raw scores are not comparable across targets. v1
-compared them anyway, and a random length-matched control came out burying the
-most surface of any method — it was simply driven into the antigen, which
-maximises burial.
-
-**The objective is disjoint from the evidence.** Ranking uses hydrogen bonds,
-salt bridges, clashes and gap index. Buried area, contacts, sequence recovery,
-CA RMSD, DockQ, Fnat and Lawrence–Colman Sc are deliberately excluded, so they
-can be reported as evidence about the ranking. v1 ranked on contact with the
-nominated epitope and reported epitope-F1 — contact with the intended epitope —
-as a result.
-
-### What the benchmark says
-
-17 complexes spanning CDR-H3 lengths 5–21, five designs each, the input complex
-scored by the same scorer at the same span. The comparison is against **the
-bound complex being grafted into** — the one reference that needs no second
-model and no matched budget, because the loop was there and it worked.
-
-Per-target mean of five designs:
-
-| | input complex | v2 | v3 (shape only) | v3 (shape + gate) |
-|---|---|---|---|---|
-| clashes | **0.0** | 25.0 | 52.2 | 21.3 |
-| closest approach (Å) | **2.69** | 1.85 | 1.43 | 1.99 |
-| buried area (Å²) | 1784 | 1727 | 1810 | 1741 |
-| contacts | 96 | 188 | 315 | 164 |
-| clash-free designs | — | 9/85 | 10/85 | **18/85** |
-| targets with one | — | 6/17 | 6/17 | **8/17** |
-
-**Shape ranking alone made it worse.** Clashes doubled against v2 (2.2 s.e.) and
-closest approach fell to 1.43 Å. The depth correlation has no steric content and
-is maximised by pressing the loop into the surface, so nothing opposed
-interpenetration: 47 of 85 models carried more than twenty clashes. Adding the
-collision counterweight recovered it — clashes 52.2 → 21.3 (3.3 s.e.), closest
-approach 1.43 → 1.99 Å (4.0 s.e.).
-
-**Against v2 the averages are a wash.** Every mean difference is under 1 s.e.
-The real gain is yield: clash-free designs double, 9/85 to 18/85, and targets
-with at least one usable model go 6/17 to 8/17 (7 targets improved, 1 worse, 9
-tied).
-
-**A contact gain is not a binding gain.** Contacts and clashes are the same
-geometry at two cutoffs and correlate at r = 0.98 across 85 designs, so a loop
-driven into the antigen scores more of both. Regressing contacts on clashes, the
-intercept — contact made at *zero* clashes — is the number that means anything:
-
-    v2           contacts = 71.6 + 4.67 × clashes
-    v3 gated     contacts = 54.5 + 5.12 × clashes
-    input complexes average 96 contacts at 0 clashes
-
-**What is not solved.** Clean models are clean because they barely touch: v3's
-clash-free designs average 26 contacts against the inputs' 96. Ranking cannot
-fix that — it chooses among retrieved loops, and no retrieved loop in these
-pools both avoids the antigen and buries like the native. That needs a
-relaxation stage, not a better selector. 61% of clashes are side-chain-only at
-median 0.43 Å overlap, which a backbone gate cannot see and discrete-rotamer
-packing leaves behind.
-
-**No design in any version beats the input complex on mean interface quality.**
-Do not read the table as saying otherwise.
-
----
 ## Usage
 
 ### Controlling the search
@@ -474,13 +444,57 @@ than raising `max_workers` within one.
 
 ---
 
-## The superseded v1 path
+## What the measurements say
 
-v1's search is still here, so its ablations can be rerun rather than taken on
-trust: `epifitscout.search()`, `epifitscout build`, and the `scoring` and
-`legacy_ranking` config sections. It queries MASTER with the native loop, so
-**every structural metric it reports is a measurement of its own query.** Use it
-for ablations, not for results.
+Measured on 17 complexes (CDR-H3 lengths 5–21), five designs each, against the
+input complex each was grafted into and scored by the identical scorer. Every
+target's own PDB entry was excluded from the search and its native loop sequence
+refused, so nothing here is a restatement of the answer.
+
+### What the tool is good for
+
+**Diverse, novel backbones.** All 85 designs come from 85 distinct donor chains,
+at a mean 21% sequence identity to the loop they replace (median 19%). These are
+not variations on the native loop — they are different real loops that fit the
+same site.
+
+**Sterically valid ones, on most targets.** 30 of 85 designs are clash-free, and
+13 of 17 targets yield at least one, from 30 distinct donors. Those are models
+worth taking further.
+
+**Cheap to enumerate.** Stages 1–8 rank on backbone geometry with no packing, so
+a target costs one MASTER search. Only the models you ask for get built.
+
+That combination — real crystallographic conformations, low identity to the
+native, sterically checked, many per target — is what makes these useful as
+**starting points and as seeds for a generative or optimisation stage**, rather
+than as finished designs.
+
+### What it does not do
+
+| | input complex | designs (mean of 5) |
+|---|---|---|
+| buried area (Å²) | 1784 | 1752 |
+| contacts | 96 | 155 |
+| **clashes** | **0.0** | **15.5** |
+
+**It does not produce a better interface than the one it replaces.** The
+crystallographic input is clash-free on all 17 targets and no design mean
+matches it. Asking the question the other way — does *any* clash-free design
+beat its own input on contacts — the answer is 3 of 17 targets, and all three
+are targets whose native interface was unusually small (9, 26 and 56 contacts).
+Where the native buries a real interface, the designs do not reach it.
+
+**The contact column is a trap.** Contacts and clashes are the same geometry at
+two cutoffs and correlate at r = 0.98 across the 85 designs, so a loop driven
+into the antigen scores more of both. The designs' 155 is mostly interpenetration,
+not binding. Judge by contact at *zero* clashes, which is 67 against the inputs'
+96 — clean models still bury less than the native loop.
+
+No claim is made about affinity. These are geometric measurements on static
+structures.
+
+Full numbers, controls and figures: [`example/`](example/).
 
 ---
 
@@ -504,23 +518,25 @@ targets that are missing or out of date — so an update takes minutes, not hour
 ## Repository layout
 
 ```
-epifitscout_v3/
+epifitscout/
 ├── check_setup.py              verify the setup
 ├── epifitscout/
 │   ├── types/                  Fragment, AnchorQuery, GraftCandidate, EpitopeSurface
 │   ├── query/builder.py        build the stem query from a complex
 │   ├── master/                 run MASTER, parse matches, place candidates
-│   ├── graft/                  feasibility gate, assembly, packing, relax
-│   ├── scoring/                epitope, shape (ranks), collision, interface (reports)
-│   ├── pipeline/               graft_pipeline
-│   ├── tools/                  graft_cdr (v2 CLI), build_complex (v1), view
+│   ├── graft/feasibility.py    stage 4: can it be bonded in?
+│   ├── scoring/                stages 5-7: epitope, shape, collision
+│   ├── build/                  stages 9-11: assemble, pack, relax, measure
+│   ├── pipeline/               stages 1-8, and the optional build
+│   ├── tools/                  CLI entry points and the setup check
 │   └── conf/config.yaml
 ├── MASTER/bin/                 ← paste the MASTER binaries here
-├── data/                       ← extract the dataset here, see DATA.md
+├── data/                       ← extract the dataset here (data/README.md)
 ├── FASPR/bin/                  ← paste FASPR here
 ├── database_builder/           rebuild or update the dataset
-├── example/                    1a2y worked example
+├── example/                    designs vs their input complexes
 ├── tests/                      test suite (small bundled fixture database)
+├── example/README.md           what the designs measure against the inputs
 ├── README.md                   the method, its results and its limits
 ```
 

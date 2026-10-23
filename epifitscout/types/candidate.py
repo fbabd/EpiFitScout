@@ -9,7 +9,7 @@ see only what the earlier ones produced:
    (:mod:`epifitscout.graft.feasibility`). Candidates that fail are dropped, not
    scored.
 3. **interface** — what the packed, all-atom graft does against the epitope
-   (:mod:`epifitscout.scoring.interface`). Measured only for the models that
+   (:mod:`epifitscout.build.interface`). Measured only for the models that
    are reported, and never used to choose them.
 4. **ranking** — sorted on that fit, clash-free models first.
 
@@ -60,7 +60,7 @@ class GraftCandidate:
         feasibility: Set by stage 2; a
             :class:`~epifitscout.graft.feasibility.GraftFeasibility`.
         interface: Set after packing; an
-            :class:`~epifitscout.scoring.interface.InterfaceScore`. A
+            :class:`~epifitscout.build.interface.InterfaceScore`. A
             measurement of the chosen model, reported but never ranked on.
         model_path: Where the packed all-atom model was written, if it was kept.
         metadata: Free-form annotation.

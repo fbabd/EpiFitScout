@@ -32,7 +32,7 @@ import logging
 
 import numpy as np
 
-from epifitscout.graft import packer as pk
+from epifitscout.build import packer as pk
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +75,13 @@ def _rotate(coords: np.ndarray, origin: np.ndarray, axis: np.ndarray,
     theta = np.radians(degrees)
     c, s = np.cos(theta), np.sin(theta)
     rel = coords - origin
-    return (
+    rotated = (
         rel * c
         + np.cross(axis, rel) * s
         + axis * np.dot(rel, axis)[:, None] * (1.0 - c)
         + origin
     )
+    return np.asarray(rotated)
 
 
 def _penalty(moved: np.ndarray, moved_elements: list[str],

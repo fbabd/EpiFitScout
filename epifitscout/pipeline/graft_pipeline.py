@@ -47,16 +47,16 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from epifitscout.build import packer as pk
+from epifitscout.build.assemble import TemplateSite
+from epifitscout.build.interface import InterfaceScorer
 from epifitscout.config.schema import PipelineConfig
 from epifitscout.graft import feasibility as feas
-from epifitscout.graft import packer as pk
-from epifitscout.graft.assemble import TemplateSite
 from epifitscout.master.parser import ParseStats, parse_anchor_matches
 from epifitscout.master.runner import MASTERRunner
 from epifitscout.query.builder import QueryBuilder
 from epifitscout.scoring.collision import count_collisions
 from epifitscout.scoring.epitope import MIN_EPITOPE_RESIDUES, epitope_ca
-from epifitscout.scoring.interface import InterfaceScorer
 from epifitscout.scoring.shape import ShapeComplementarityScorer
 from epifitscout.types.anchor_query import AnchorQuery
 from epifitscout.types.candidate import GraftCandidate
@@ -159,8 +159,9 @@ class GraftPipeline:
         exclude_native_loop: bool = False,
         packer_name: str = "FASPR",
         keep_models: bool = True,
+        build: bool = True,
     ) -> GraftResult:
-        """Run every stage for one target.
+        """Search, score and rank for one target; optionally build models.
 
         Args:
             template: The antibody–antigen complex to graft into.
@@ -186,6 +187,9 @@ class GraftPipeline:
             packer_name: Packer to rebuild side chains with, or ``"none"`` to
                 skip packing — which also makes the interface measurement
                 backbone-only, so it is for diagnostics, not results.
+            build: Run stages 9-11 -- graft, pack, relax and measure the
+                top_k models. Off returns the ranking alone, which is the
+                tool proper: no packer is needed and nothing is written.
             keep_models: Keep the packed PDB files. Off saves disk on a large
                 benchmark; the scores are kept either way.
 
@@ -197,12 +201,13 @@ class GraftPipeline:
                 return self._run(
                     template, ab_chain, loop_span, antigen_chains, Path(tmp),
                     exclude_donors, exclude_native_loop, packer_name,
-                    keep_models=False,
+                    keep_models=False, build=build,
                 )
         out_dir.mkdir(parents=True, exist_ok=True)
         return self._run(
             template, ab_chain, loop_span, antigen_chains, out_dir,
             exclude_donors, exclude_native_loop, packer_name, keep_models,
+            build,
         )
 
     # ------------------------------------------------------------------ #
@@ -300,6 +305,7 @@ class GraftPipeline:
         exclude_native_loop: bool,
         packer_name: str,
         keep_models: bool,
+        build: bool,
     ) -> GraftResult:
         cfg = self._cfg
         builder = QueryBuilder(template)
@@ -378,19 +384,23 @@ class GraftPipeline:
         )[: cfg.pool_size]
         funnel["pooled"] = len(pool)
 
-        # Stage 6: only the models that will be reported are packed and
-        # measured. Those numbers are output and evidence, not the ranking.
-        scored = self.measure(
-            pool[: cfg.top_k], query, site, out_dir,
-            packer_name=packer_name, keep_models=keep_models,
-        )
-        funnel["scored"] = len(scored)
-
-        ranked = _order(scored)
+        # The tool ends here. `pool` is ranked, and the ranking is final:
+        # nothing measured on a built model can change it.
+        ranked = _order(pool)[: cfg.top_k]
         funnel["returned"] = len(ranked)
 
+        # Stages 9-11 are optional and live in epifitscout.build. They are run
+        # here only when a caller asks for models, and they re-rank nothing.
+        if build:
+            scored = self.measure(
+                ranked, query, site, out_dir,
+                packer_name=packer_name, keep_models=keep_models,
+            )
+            funnel["built"] = len(scored)
+            ranked = _order(scored)
+
         result = GraftResult(
-            query=query, site=site, top=ranked, pool=ranked,
+            query=query, site=site, top=ranked, pool=_order(pool),
             funnel=funnel, parse_stats=stats, epitope_residues=len(epitope),
             clear_of_antigen=clear,
         )

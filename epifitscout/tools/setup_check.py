@@ -46,22 +46,23 @@ def _check_binaries() -> bool:
 def _check_packer() -> None:
     """Report the side-chain packer.
 
-    Does not fail the check, because a search still runs without it — but it
-    says plainly that the results will not mean much. Stage 5 measures an
-    all-atom interface, and without a packer the models are backbone-only at
-    the graft, which reads as a loose interface on every term.
+    Does not fail the check. Stages 1-8 -- the tool proper -- never pack
+    anything, so a search is fully usable without a packer. It is stages 9-11
+    that need one: they measure an all-atom interface, and without side chains
+    the models are backbone-only at the graft and read as a loose interface on
+    every term.
     """
     try:
-        from epifitscout.graft.packer import check_packer, find_packer
+        from epifitscout.build.packer import check_packer, find_packer
     except ImportError:
         return
 
     exe = find_packer("FASPR")
     if exe is None:
-        print("[--]   FASPR      not installed — needed for results: without a "
-              "packer the")
-        print("                  grafts are backbone-only and every interface "
-              "term reads loose")
+        print("[--]   FASPR      not installed — searching is unaffected; "
+              "needed only to")
+        print("                  build models (stages 9-11), which are "
+              "backbone-only without it")
         print(f"      see {paths.REPO_ROOT / 'FASPR/README.md'}")
         return
     problem = check_packer(exe, "FASPR")

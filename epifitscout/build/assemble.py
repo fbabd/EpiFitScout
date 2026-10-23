@@ -29,8 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
-from epifitscout.graft import packer as pk
-from epifitscout.graft.relax import relax_side_chains
+from epifitscout.build import packer as pk
+from epifitscout.build.relax import relax_side_chains
 from epifitscout.types.candidate import GraftCandidate
 from epifitscout.utils.io import detect_format
 

@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from epifitscout.build import sasa
+from epifitscout.build.interface import InterfaceScorer, read_atoms
 from epifitscout.config.schema import InterfaceConfig
-from epifitscout.scoring import sasa
-from epifitscout.scoring.interface import InterfaceScorer, read_atoms
 
 
 def _record(record: str, serial: int, name: str, resname: str, chain: str,

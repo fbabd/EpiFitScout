@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 from epifitscout import paths
+from epifitscout.build.assemble import TemplateSite
+from epifitscout.build.interface import InterfaceScore, InterfaceScorer
 from epifitscout.config.schema import (
     FeasibilityConfig,
     InterfaceConfig,
@@ -34,7 +36,6 @@ from epifitscout.config.schema import (
     PipelineConfig,
     ShapeConfig,
 )
-from epifitscout.graft.assemble import TemplateSite
 from epifitscout.graft.feasibility import GraftFeasibility
 from epifitscout.paths import (
     MissingBinaryError,
@@ -43,7 +44,6 @@ from epifitscout.paths import (
 )
 from epifitscout.pipeline.graft_pipeline import GraftPipeline, GraftResult
 from epifitscout.query.builder import QueryBuilder, load_fragment_from_pdb
-from epifitscout.scoring.interface import InterfaceScore, InterfaceScorer
 from epifitscout.types.anchor_query import AnchorQuery
 from epifitscout.types.candidate import GraftCandidate
 from epifitscout.types.fragment import Fragment
@@ -133,6 +133,7 @@ def graft(
     top_k: int | None = None,
     packer: str = "FASPR",
     keep_models: bool = True,
+    build: bool = True,
     max_workers: int | None = None,
 ) -> GraftResult:
     """Retrieve, graft and rank real CDR loops for one antibody–antigen complex.
@@ -164,6 +165,8 @@ def graft(
         top_k: Candidates to return.
         packer: Side-chain packer, or ``"none"`` for backbone-only models,
             which makes the interface numbers diagnostic rather than results.
+        build: Run stages 9-11 -- graft, pack, relax and measure. Off makes
+            this :func:`search`: the ranking only, with no packer needed.
         keep_models: Keep the packed PDB files.
         max_workers: Parallel MASTER shards and packing threads.
 
@@ -215,11 +218,42 @@ def graft(
         exclude_native_loop=exclude_native_loop,
         packer_name=packer,
         keep_models=keep_models,
+        build=build,
+    )
+
+
+def search(
+    template: Path | str,
+    ab_chain: str,
+    loop_span: tuple[int, int],
+    antigen_chains: tuple[str, ...] | list[str],
+    **kwargs: object,
+) -> GraftResult:
+    """EpiFitScout proper: retrieve, score and rank loops for a CDR site.
+
+    Stages 1-8. Returns candidates ranked by epitope shape complementarity,
+    with colliding ones sorted below the rest. Nothing is grafted, packed or
+    measured, so this needs no packer and writes no models -- and the ranking
+    it returns is identical to the one :func:`graft` reports, because building
+    a model never changes the order.
+
+    Use :func:`graft` instead when you want the all-atom models as well.
+
+    Example:
+        >>> result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+        >>> for c in result.top:
+        ...     print(c.source, c.sequence, c.shape.describe())
+    """
+    return graft(
+        template, ab_chain, loop_span, antigen_chains,
+        build=False, keep_models=False, **kwargs,  # type: ignore[arg-type]
     )
 
 
 __all__ = [
-    # The entry point
+    # The tool: search, score, rank
+    "search",
+    # The worked example: the above, plus building and measuring models
     "graft",
     # Pipeline and its pieces, for stage-by-stage use
     "GraftPipeline",

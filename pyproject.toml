@@ -34,13 +34,10 @@ dependencies = [
 epifitscout = "epifitscout.cli:main"
 
 [project.optional-dependencies]
-# Dependencies of example/ and the tutorial notebook only.
+# example/ only. Biopython, numpy and scipy are already core dependencies;
+# matplotlib is the one thing the figures need and the library does not.
 examples = [
-    "pandas>=2.0",
     "matplotlib>=3.8",
-    "jupyterlab>=4.0",
-    "ipykernel>=6.0",
-    "py3Dmol>=2.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -109,7 +106,7 @@ module = [
     "epifitscout.tools.build_complex",
     "epifitscout.tools.visualize_fit",
     # Writes structures through Bio.PDB, which ships no type information.
-    "epifitscout.graft.assemble",
+    "epifitscout.build.assemble",
 ]
 disable_error_code = ["no-any-return", "no-untyped-call", "type-arg", "attr-defined"]
 

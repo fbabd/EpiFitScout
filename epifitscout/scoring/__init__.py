@@ -1,24 +1,27 @@
-"""Scoring: the selector, and the measurements made on what it selects.
+"""Scoring that decides — stages 5 to 7, on backbone coordinates only.
 
+:mod:`~epifitscout.scoring.epitope`
+    Which antigen residues a candidate is judged against.
 :mod:`~epifitscout.scoring.shape`
-    How much of a placed loop sits cleanly against the epitope, counted from
-    backbone distances. **This is what ranks candidates**, and it is the whole
-    of the selection.
-:mod:`~epifitscout.scoring.interface`
-    Buried area, contacts, clashes, hydrogen bonds, salt bridges and trapped
-    void, measured all-atom on the models that are reported. Output and
-    evidence — none of it ranks.
-:mod:`~epifitscout.scoring.sasa`
-    Shrake–Rupley surface area and the interface void, from first principles.
+    Depth-profile and torsion complementarity to that epitope. This ranks.
+:mod:`~epifitscout.scoring.collision`
+    Loop backbone inside the antigen. Shape has no steric content and is
+    maximised by pressing into the surface, so it needs this counterweight.
+
+Everything here runs before anything is built, which is what makes the
+all-atom measurements in :mod:`epifitscout.build` independent evidence rather
+than a restatement of the objective.
 """
 
-from __future__ import annotations
-
-from epifitscout.scoring.epitope import epitope_ca
-from epifitscout.scoring.interface import InterfaceScore, InterfaceScorer
+from epifitscout.scoring.collision import COLLISION, count_collisions
+from epifitscout.scoring.epitope import EPITOPE_CUTOFF, epitope_ca
 from epifitscout.scoring.shape import ShapeComplementarityScorer, ShapeScore
 
 __all__ = [
-    "InterfaceScore", "InterfaceScorer",
-    "ShapeComplementarityScorer", "ShapeScore", "epitope_ca",
+    "COLLISION",
+    "EPITOPE_CUTOFF",
+    "ShapeComplementarityScorer",
+    "ShapeScore",
+    "count_collisions",
+    "epitope_ca",
 ]

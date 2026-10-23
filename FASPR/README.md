@@ -1,10 +1,16 @@
 # FASPR goes in this folder
 
-**Needed for results.** `epifitscout graft` measures an all-atom interface, and
-without a packer the grafted loops are backbone only — every interface term then
-reads as a loose interface, because the side chains that decide complementarity
-are not there. The pipeline still runs (`--packer none`), but the numbers are
-diagnostic rather than results.
+**Not needed to search.** EpiFitScout proper — stages 1 to 8,
+`epifitscout.search()` and `epifitscout search` — ranks fragments on backbone
+coordinates and never packs anything. You can skip this folder entirely if
+retrieval is all you want.
+
+**Needed to build models.** Stages 9 to 11 (`epifitscout.graft()`,
+`epifitscout graft`, and everything in `example/`) rebuild side chains and
+measure an all-atom interface. Without a packer the grafted loops are backbone
+only, and every interface term then reads as a loose interface because the side
+chains that decide complementarity are absent. Those runs still complete with
+`--packer none`, but the numbers are diagnostic rather than results.
 
 FASPR is the recommended packer: one small C++ program, no registration, under a
 second per complex.
@@ -61,7 +67,15 @@ python check_setup.py
 [ok]   FASPR      /…/epifitscout/FASPR/bin/FASPR
 ```
 
-A missing or incomplete install is reported before any search starts, not
+When FASPR is absent the check reports it as `[--]`, not `[FAIL]`, and still
+says `Ready.` — a search does not need it:
+
+```
+[--]   FASPR      not installed — searching is unaffected; needed only to
+                  build models (stages 9-11), which are backbone-only without it
+```
+
+Either way the state of the install is reported before any run starts, not
 halfway through.
 
 > The binary you build is for this machine's platform. Unlike the MASTER

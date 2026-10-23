@@ -146,7 +146,7 @@ class TestTheFunnelExplainsItself:
             antigen_chains=("A",), out_dir=tmp_path, packer_name="none",
         )
         assert list(result.funnel) == [
-            "retrieved", "feasible", "pooled", "scored", "returned",
+            "retrieved", "feasible", "pooled", "returned", "built",
         ]
         counts = list(result.funnel.values())
         assert counts == sorted(counts, reverse=True)      # monotonically narrowing
@@ -281,7 +281,7 @@ class TestTheFitRanksRatherThanGates:
         self, pipeline: GraftPipeline, example_pdb: Path, tmp_path: Path
     ) -> None:
         """Ordering, not exclusion: a poor shape score is last place, not removal."""
-        from epifitscout.graft.assemble import TemplateSite
+        from epifitscout.build.assemble import TemplateSite
         from epifitscout.scoring.epitope import epitope_ca
         from epifitscout.scoring.shape import ShapeComplementarityScorer
 

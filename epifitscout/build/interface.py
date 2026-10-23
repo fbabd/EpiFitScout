@@ -28,7 +28,7 @@ What is measured, and why each term is here
     part. Extent of the interface rather than its quality.
 ``clashes``
     Heavy-atom pairs closer than a real interface ever puts them, element-aware
-    (see :mod:`epifitscout.graft.packer`): polar pairs may approach 2.2 Å
+    (see :mod:`epifitscout.build.packer`): polar pairs may approach 2.2 Å
     because they can hydrogen bond, anything involving carbon may not come
     inside 2.8 Å. Thresholds calibrated on 102 native interfaces, where they
     flag ~2% — so a clash means "a real interface would not do this".
@@ -63,8 +63,8 @@ from pathlib import Path
 import numpy as np
 
 from epifitscout.config.schema import InterfaceConfig
-from epifitscout.graft import packer as pk
-from epifitscout.scoring.sasa import atom_radii, interface_void, shrake_rupley
+from epifitscout.build import packer as pk
+from epifitscout.build.sasa import atom_radii, interface_void, shrake_rupley
 
 logger = logging.getLogger(__name__)
 
@@ -428,7 +428,7 @@ def _clash_count(loop: AtomSet, antigen: AtomSet) -> tuple[int, float]:
     """Element-aware clashes between loop and antigen, and closest approach.
 
     Uses the thresholds calibrated on native interfaces in
-    :mod:`epifitscout.graft.packer`: a polar–polar pair is allowed to 2.2 Å
+    :mod:`epifitscout.build.packer`: a polar–polar pair is allowed to 2.2 Å
     because it may be a hydrogen bond, any pair involving carbon only to 2.8 Å.
     One distance cutoff for both would either call good hydrogen bonds clashes
     or let steric overlaps pass.

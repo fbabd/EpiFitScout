@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from epifitscout.build.assemble import TemplateSite
 from epifitscout.config.schema import FeasibilityConfig
 from epifitscout.graft import feasibility as feas
-from epifitscout.graft.assemble import TemplateSite
 from epifitscout.query.builder import QueryBuilder
 from epifitscout.types.anchor_query import AnchorQuery
 from epifitscout.types.candidate import GraftCandidate

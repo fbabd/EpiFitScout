@@ -469,7 +469,7 @@ def closest_contact(
     Returns the closest heavy-atom distance and a description of the worst
     chemically unacceptable contact, or None if there is none. Kept for the
     command-line tool's per-model report; the pipeline uses the full
-    :mod:`epifitscout.scoring.interface` measurement instead.
+    :mod:`epifitscout.build.interface` measurement instead.
     """
     lo, hi = span
     loop: list[tuple[str, np.ndarray, str]] = []
