@@ -5,7 +5,7 @@ database is ~25 GB unpacked and is not in the repository, so you add it once.
 
 ## 1. Download
 
-The packaged dataset is on Zenodo:
+The packaged dataset is on Zenodo: https://doi.org/10.5281/zenodo.23672208 
 
 > **`epifitscout-database-v1.0.0.tar.xz`** — 645 MB compressed, ~25 GB unpacked
 

@@ -270,7 +270,7 @@ class ShapeComplementarityScorer:
     [0, 1] via (raw + 1) / 2.
 
     Args:
-        weight_depth: Weight for depth anti-correlation component. Default 0.7.
+        weight_depth: Weight for the depth correlation component. Default 0.7.
         weight_tau:   Weight for backbone torsion co-correlation. Default 0.3.
     """
 
