@@ -1,4 +1,4 @@
-"""Fragment and ScoredHit dataclasses — canonical data representations for the pipeline."""
+"""Fragment: a backbone stretch of a protein chain, the unit everything is built from."""
 
 from __future__ import annotations
 
@@ -65,30 +65,3 @@ class Fragment:
     def canonical_form(self) -> str | None:
         """CDR canonical form if annotated, else None."""
         return self.metadata.get("canonical_form")
-
-
-@dataclass
-class ScoredHit:
-    """A fragment hit with all pipeline scores attached.
-
-    ``local_fit`` is present when step 2 ran the local shape-fit scorer, and
-    carries where along the epitope the loop matched and over what length. It is
-    None when the older whole-length profile scorer was used.
-    """
-
-    fragment: Fragment
-    superposition: Any          # Superposition — forward ref avoids circular import
-    rmsd_cdr: float
-    complementarity_score: float
-    final_score: float
-    local_fit: Any = None       # LocalFit — forward ref avoids circular import
-
-    def __repr__(self) -> str:
-        return (
-            f"ScoredHit(pdb={self.fragment.pdb_id}:{self.fragment.chain} "
-            f"res={self.fragment.residue_range} "
-            f"cdr={self.fragment.cdr_type} "
-            f"rmsd={self.rmsd_cdr:.3f} "
-            f"comp={self.complementarity_score:.3f} "
-            f"score={self.final_score:.4f})"
-        )

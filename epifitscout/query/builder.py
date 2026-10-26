@@ -1,38 +1,27 @@
-"""QueryBuilder: create query Fragment objects from a PDB file.
-
-Typical usage — prepare a CDR loop and epitope surface from a known
-antibody-antigen complex, then feed them to FragmentSearchPipeline.search().
+"""QueryBuilder: read a complex and build the stem query for a CDR site.
 
 Example::
 
     from epifitscout.query.builder import QueryBuilder
 
     qb = QueryBuilder(Path("my_complex.pdb"))
-    qb.describe()                          # print chains + residue ranges
+    qb.describe()                               # chains and residue ranges
+    query = qb.get_anchor_query("H", 95, 102)    # the stems, not the loop
+    print(query.describe())
 
-    query_cdr     = qb.get_fragment("H", res_start=100, res_end=112)
-    query_epitope = qb.get_fragment("A", res_start=50,  res_end=65)
-
-    # --- or: auto-detect IMGT CDR loops on heavy chain ---
-    cdr_frags = qb.get_imgt_cdrs("H")     # returns dict[str, Fragment]
-    query_h3  = cdr_frags["H3"]
+:meth:`QueryBuilder.get_anchor_query` is the one that matters;
+:meth:`get_fragment` and :meth:`get_imgt_cdrs` are there to find the span to
+pass it when the CDR boundaries are not already known.
 """
 
 from __future__ import annotations
 
 import logging
-import warnings
 from pathlib import Path
 
-import numpy as np
-
-from epifitscout.types.epitope import EpitopeSurface
+from epifitscout.types.anchor_query import AnchorQuery
 from epifitscout.types.fragment import Fragment
-from epifitscout.utils.io import (
-    detect_format,
-    extract_backbone_coords_by_range,
-    extract_residue_atoms,
-)
+from epifitscout.utils.io import detect_format, extract_backbone_coords_by_range
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +34,11 @@ IMGT_CDR_RANGES: dict[str, tuple[int, int]] = {
     "L2": (56, 65),
     "L3": (105, 117),
 }
+
+#: Framework residues taken on each side of a CDR to form the search query.
+#: Four per side gives 12 CA atoms for the rigid-body fit and stays within the
+#: conserved framework flanking CDR-H3 (…VYYC**AR** / **WGQG**TLV…).
+DEFAULT_STEM_LENGTH = 4
 
 
 def load_fragment_from_pdb(
@@ -248,138 +242,111 @@ class QueryBuilder:
             )
         return results
 
-    def get_surface_patch(
+    def get_anchor_query(
         self,
         chain_id: str,
-        center_res: int,
-        radius_res: int = 8,
-    ) -> Fragment:
-        """Extract a residue window centred on a given residue.
+        loop_start: int,
+        loop_end: int,
+        stem_length: int = DEFAULT_STEM_LENGTH,
+    ) -> AnchorQuery:
+        """Build the stem query for a CDR site: the search query v2 uses.
 
-        .. deprecated::
-            Use :meth:`get_epitope_surface` instead. This selects by *residue
-            number*, not by position in space, so the window can include
-            residues nowhere near the CDR: on the benchmark complexes it
-            returned 9 residues of which typically only 1-2 were within 8 Å of
-            the loop. It also returns backbone atoms only, while contact
-            distances need side chains.
+        The loop itself is read only to count its residues — its coordinates
+        never reach the query, which is what makes the retrieved loops a
+        prediction rather than a restatement of the native one. See
+        :mod:`epifitscout.types.anchor_query`.
 
-        Args:
-            chain_id: Chain identifier.
-            center_res: Central residue number.
-            radius_res: Half-width in residues (window = center ± radius_res).
-
-        Returns:
-            Fragment covering [center_res - radius_res, center_res + radius_res].
-        """
-        warnings.warn(
-            "get_surface_patch selects by residue number, not by proximity, and "
-            "returns backbone atoms only. Use get_epitope_surface() to define an "
-            "epitope.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.get_fragment(
-            chain_id,
-            res_start=max(1, center_res - radius_res),
-            res_end=center_res + radius_res,
-        )
-
-    def get_epitope_surface(
-        self,
-        chain_id: str,
-        residues: list[int] | tuple[int, int] | None = None,
-        near: Fragment | None = None,
-        cutoff: float = 10.0,
-    ) -> EpitopeSurface:
-        """Build an epitope from the antigen chain, all atoms, side chains included.
-
-        The epitope is normally **yours to choose**: pass the residues you want
-        to target. It need not be in contact with the template's CDR — the point
-        of a search is often to find a loop that *would* reach an epitope the
-        template antibody does not engage.
+        Insertion codes are handled by position rather than by number: antibody
+        CDRs are routinely numbered 111, 111A, 111B, so the residue *count* of a
+        span is not ``loop_end - loop_start + 1`` and the stems have to be taken
+        as "the last *n* residues before the loop", not "residues
+        ``loop_start - n`` to ``loop_start - 1``".
 
         Args:
-            chain_id: Antigen chain.
-            residues: Which residues form the epitope, either an explicit list
-                of residue numbers or an inclusive ``(first, last)`` range.
-                Residues absent from the chain are skipped with a warning.
-            near: Instead of naming residues, select everything within *cutoff*
-                of this fragment. Convenient for reproducing a known interface,
-                but it *presupposes* contact, so do not use it to define a
-                target epitope.
-            cutoff: Distance cutoff in Å, used only with *near*.
+            chain_id: Antibody chain carrying the CDR.
+            loop_start: First residue number of the loop, inclusive.
+            loop_end: Last residue number of the loop, inclusive.
+            stem_length: Framework residues to take on each side. Four is the
+                default: enough to determine the rigid-body fit well (12 CA
+                atoms over both stems) while staying inside the conserved
+                framework either side of CDR-H3.
 
         Returns:
-            The selected residues as an :class:`EpitopeSurface`.
+            An :class:`~epifitscout.types.anchor_query.AnchorQuery`.
 
         Raises:
-            ValueError: If neither or both of *residues* and *near* are given,
-                if the chain is absent, or if nothing was selected.
+            ValueError: If the loop is empty, or either flank is too short to
+                supply ``stem_length`` residues.
         """
-        if (residues is None) == (near is None):
-            raise ValueError("give exactly one of residues= or near=")
+        if stem_length < 3:
+            raise ValueError(f"stem_length must be at least 3, got {stem_length}")
+        if loop_end < loop_start:
+            raise ValueError(f"loop_end {loop_end} precedes loop_start {loop_start}")
 
-        chain_id = self.resolve_chain(chain_id)
-        all_residues = extract_residue_atoms(self._pdb_path, chain_id, fmt=self._fmt)
-        body = np.concatenate([c for _, _, c in all_residues], axis=0)
-
-        if residues is not None:
-            if isinstance(residues, tuple) and len(residues) == 2:
-                lo, hi = residues
-                wanted = set(range(int(lo), int(hi) + 1))
-            else:
-                wanted = {int(r) for r in residues}
-            selected = [r for r in all_residues if r[0] in wanted]
-            missing = wanted - {r[0] for r in selected}
-            if missing:
-                logger.warning(
-                    "Epitope: %d requested residue(s) absent from chain %s: %s",
-                    len(missing), chain_id,
-                    ", ".join(str(m) for m in sorted(missing)[:10]),
-                )
-            if not selected:
-                raise ValueError(
-                    f"None of the requested residues exist in chain '{chain_id}' "
-                    f"of {self._pdb_path.name}. Use describe() to list the "
-                    "chains and their residue ranges."
-                )
-        else:
-            from scipy.spatial import cKDTree
-
-            assert near is not None
-            tree = cKDTree(near.coords.reshape(-1, 3))
-            selected = [
-                r for r in all_residues
-                if tree.query_ball_point(r[2], cutoff, return_length=True).any()
-            ]
-            if not selected:
-                raise ValueError(
-                    f"No residue of chain '{chain_id}' lies within {cutoff} Å of "
-                    f"{near.pdb_id}:{near.chain} "
-                    f"{near.residue_range[0]}-{near.residue_range[1]}. Check that "
-                    "both come from the same structure and frame."
-                )
-
-        surface = EpitopeSurface.from_residues(chain_id, selected, body=body)
-        logger.info(
-            "Epitope: %d residues of chain %s (%d atoms)",
-            surface.n_residues, chain_id, surface.n_atoms,
+        chain = self.resolve_chain(chain_id)
+        loop_coords, loop_resnums, loop_seq = extract_backbone_coords_by_range(
+            self._pdb_path, chain, loop_start, loop_end, fmt=self._fmt
         )
-        return surface
+        gap_length = len(loop_resnums)
 
-    def epitope_reach(self, cdr: Fragment, epitope: EpitopeSurface) -> float:
-        """Closest approach, in Å, between a CDR site and an epitope.
+        # Over-reach the flanks, then take the stem residues by position: an
+        # insertion code inside the window would otherwise shift the count.
+        reach = stem_length + 4
+        n_flank = self._slice_flank(
+            chain, loop_start - reach, loop_start - 1, stem_length, side="N"
+        )
+        c_flank = self._slice_flank(
+            chain, loop_end + 1, loop_end + reach, stem_length, side="C"
+        )
 
-        Worth checking before a search: if the epitope is far from the CDR site,
-        no loop of that length can reach it and every candidate will score zero.
-        A loop extends roughly 3 Å per residue from its anchors, so an epitope
-        more than a few Å beyond the template's own loop is likely out of range.
-        """
-        from scipy.spatial import cKDTree
+        query = AnchorQuery(
+            pdb_id=self._pdb_id,
+            chain=chain,
+            n_stem=n_flank,
+            c_stem=c_flank,
+            gap_length=gap_length,
+            loop_range=(loop_resnums[0], loop_resnums[-1]),
+            metadata={
+                "pdb_file": str(self._pdb_path),
+                "stem_length": stem_length,
+                "native_loop_sequence": loop_seq,
+                "native_loop_coords": loop_coords,
+            },
+        )
+        logger.info("Anchor query: %s", query.describe())
+        if query.span_per_residue > 3.3:
+            logger.warning(
+                "Span %.1f Å over %d residues (%.2f Å/res) is at or beyond the "
+                "reach of an extended chain; check the loop boundaries.",
+                query.span, gap_length, query.span_per_residue,
+            )
+        return query
 
-        return float(
-            cKDTree(epitope.atom_coords).query(cdr.coords.reshape(-1, 3), k=1)[0].min()
+    def _slice_flank(
+        self, chain: str, lo: int, hi: int, want: int, side: str
+    ) -> Fragment:
+        """Take *want* residues from a flanking window, adjacent to the loop."""
+        try:
+            coords, resnums, seq = extract_backbone_coords_by_range(
+                self._pdb_path, chain, lo, hi, fmt=self._fmt
+            )
+        except ValueError:
+            resnums = []
+        if len(resnums) < want:
+            raise ValueError(
+                f"{side}-side flank of chain {chain} holds {len(resnums)} "
+                f"residues in {lo}-{hi}, fewer than the {want} the stem needs. "
+                "The CDR is too close to the end of the modelled chain, or the "
+                "chain has gaps there."
+            )
+        sl = slice(-want, None) if side == "N" else slice(0, want)
+        return Fragment(
+            pdb_id=self._pdb_id,
+            chain=chain,
+            residue_range=(resnums[sl][0], resnums[sl][-1]),
+            coords=coords[sl],
+            sequence=seq[sl],
+            metadata={"source": "query_stem", "side": side},
         )
 
     # ------------------------------------------------------------------ #

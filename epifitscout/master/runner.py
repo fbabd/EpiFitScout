@@ -1,7 +1,7 @@
 """MASTERRunner: subprocess wrapper for the MASTER C++ binary (v1.5/1.6).
 
 MASTER requires PDS-format files, not raw PDB. This module:
-  1. Writes the query Fragment as a temporary PDB file.
+  1. Writes the query as a temporary PDB file.
   2. Converts it to PDS using the accompanying ``createPDS`` binary.
   3. Resolves relative paths in pds.list to absolute (MASTER requires absolute).
   4. Runs MASTER search against the resolved PDS list.
@@ -9,6 +9,20 @@ MASTER requires PDS-format files, not raw PDB. This module:
 When ``max_workers > 1``, the database is split into shards and searched in
 parallel — one MASTER process per shard — then results are merged and sorted
 by RMSD before returning.
+
+Two kinds of query
+------------------
+An :class:`~epifitscout.types.anchor_query.AnchorQuery` — two framework stems
+and the gap between them — is the query v2 searches with. It is written as one
+PDB chain with a numbering gap, which MASTER reads as two disjoint segments, and
+``--gapLen`` then restricts matches to those whose segments are separated by the
+right number of residues. This is what lets the search find loops without being
+shown one.
+
+A plain :class:`~epifitscout.types.fragment.Fragment` is still accepted and
+searched as a single segment. That is the v1 query, kept for the ablation that
+measures what the change was worth; it is not the default path, because
+searching with the native loop makes every structural metric circular.
 """
 
 from __future__ import annotations
@@ -24,8 +38,12 @@ from pathlib import Path
 
 from epifitscout import paths
 from epifitscout.config.schema import MASTERConfig
+from epifitscout.types.anchor_query import AnchorQuery
 from epifitscout.types.fragment import Fragment
 from epifitscout.utils.io import fragment_to_pdb_string
+
+#: Either kind of query this runner accepts.
+Query = Fragment | AnchorQuery
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +126,13 @@ class MASTERRunner:
     # Public API
     # ------------------------------------------------------------------ #
 
-    def run(self, query: Fragment, output_dir: Path) -> Path:
+    def run(self, query: Query, output_dir: Path) -> Path:
         """Run MASTER search — single process, full database.
 
         Args:
-            query: The query fragment.
+            query: An :class:`~epifitscout.types.anchor_query.AnchorQuery`
+                (two stems, gap-constrained) or a single-segment
+                :class:`~epifitscout.types.fragment.Fragment`.
             output_dir: Directory to write intermediate and output files.
 
         Returns:
@@ -128,7 +148,9 @@ class MASTERRunner:
         query_pds = self._convert_to_pds(query_pdb, output_dir)
         match_file = output_dir / "matches.txt"
 
-        cmd = self._build_command(query_pds, match_file, self._resolved_list)
+        cmd = self._build_command(
+            query_pds, match_file, self._resolved_list, self._gap_len(query)
+        )
         logger.info("Running MASTER: %s", " ".join(str(c) for c in cmd))
 
         try:
@@ -151,7 +173,7 @@ class MASTERRunner:
         logger.info("MASTER finished. stdout: %s", result.stdout[:200])
         return match_file
 
-    def run_sharded(self, query: Fragment, output_dir: Path) -> Path:
+    def run_sharded(self, query: Query, output_dir: Path) -> Path:
         """Run MASTER in parallel across database shards, return merged results.
 
         Args:
@@ -173,11 +195,12 @@ class MASTERRunner:
 
         query_pdb = self._write_query_pdb(query, output_dir)
         query_pds = self._convert_to_pds(query_pdb, output_dir)
+        gap_len = self._gap_len(query)
 
         def _run_shard(args: tuple[int, Path]) -> Path:
             i, shard_list = args
             match_file = output_dir / f"matches_{i}.txt"
-            cmd = self._build_command(query_pds, match_file, shard_list)
+            cmd = self._build_command(query_pds, match_file, shard_list, gap_len)
             logger.debug("Shard %d: %s", i, " ".join(str(c) for c in cmd))
             try:
                 result = subprocess.run(
@@ -204,7 +227,7 @@ class MASTERRunner:
 
         return self._merge_match_files(shard_match_files, output_dir)
 
-    def run_with_tempdir(self, query: Fragment) -> Path:
+    def run_with_tempdir(self, query: Query) -> Path:
         """Run MASTER using a managed temporary directory.
 
         The temp directory is registered for cleanup on process exit via atexit.
@@ -272,9 +295,17 @@ class MASTERRunner:
         )
         return merged_path
 
-    def _write_query_pdb(self, query: Fragment, dest_dir: Path) -> Path:
-        """Serialise query Fragment to PDB format."""
+    def _write_query_pdb(self, query: Query, dest_dir: Path) -> Path:
+        """Serialise the query to PDB format, one or two segments."""
         query_path = dest_dir / "query.pdb"
+        if isinstance(query, AnchorQuery):
+            query_path.write_text(query.to_pdb_string())
+            logger.debug(
+                "Wrote 2-segment query PDB: %s (%d + %d stem residues, gap %d)",
+                query_path, query.n_stem.length, query.c_stem.length,
+                query.gap_length,
+            )
+            return query_path
         pdb_str = fragment_to_pdb_string(
             query.coords,
             sequence=query.sequence,
@@ -284,6 +315,12 @@ class MASTERRunner:
         query_path.write_text(pdb_str)
         logger.debug("Wrote query PDB: %s (%d residues)", query_path, query.length)
         return query_path
+
+    def _gap_len(self, query: Query) -> str | None:
+        """The ``--gapLen`` argument for this query, or None for one segment."""
+        if not isinstance(query, AnchorQuery):
+            return None
+        return query.gap_len_argument(self._cfg.gap_tolerance)
 
     def _convert_to_pds(self, pdb_path: Path, dest_dir: Path) -> Path:
         """Convert a PDB file to MASTER PDS format using createPDS."""
@@ -301,9 +338,20 @@ class MASTERRunner:
         return pds_path
 
     def _build_command(
-        self, query_pds: Path, match_file: Path, target_list: Path
+        self,
+        query_pds: Path,
+        match_file: Path,
+        target_list: Path,
+        gap_len: str | None = None,
     ) -> list[str]:
-        """Construct the MASTER command-line argument list."""
+        """Construct the MASTER command-line argument list.
+
+        ``--gapLen`` does double duty: it restricts matches to those whose
+        segments are the right distance apart *in sequence*, and it fixes the
+        N-to-C order of the segments. Without it MASTER considers every ordering
+        of disjoint segments, which would return matches whose "loop" runs
+        backwards through the chain and cannot be grafted.
+        """
         cmd = [
             str(self._binary),
             "--query", str(query_pds),
@@ -311,6 +359,8 @@ class MASTERRunner:
             "--rmsdCut", str(self._cfg.rmsd_threshold),
             "--matchOut", str(match_file),
         ]
+        if gap_len is not None:
+            cmd += ["--gapLen", gap_len]
         if self._cfg.max_hits > 0:
             cmd += ["--topN", str(self._cfg.max_hits)]
         if self._cfg.n_threads > 0:

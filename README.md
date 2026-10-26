@@ -1,54 +1,129 @@
 # EpiFitScout
 
-Protein structural fragment search with epitope shape-complementarity scoring.
+Search ~25,000 real antibody chains for CDR loops that fit an epitope, and rank
+them by how their backbone complements it.
 
-Give it a complex, mark the CDR loop and the epitope. It searches ~25,000
-antibody chains from SAbDab for loops that are both structurally similar to
-yours and geometrically complementary to the epitope surface — then grafts the
-best ones back in and hands you finished structures.
+Give it a bound antibody–antigen complex and say which CDR to replace. It finds
+loops that can bridge that exact gap, places each one, and ranks them by shape
+complementarity against the epitope — all on backbone coordinates, before
+anything is built.
 
 ```
-query PDB ──▶ CDR + epitope ──▶ search() ──▶ ranked hits ──▶ grafted complexes
-                                   │                          (epifitscout build)
-                                   ├─ 1. MASTER  backbone RMSD search
-                                   ├─ 2. graft   place each hit in the Ab–Ag frame
-                                   ├─ 3. fit     longest clash-free contact run
-                                   └─ 4. rank    weighted RMSD + shape
+bound complex + CDR span + antigen chain
+      │
+ 1. query      two framework stems either side of the CDR (4 residues each).
+               The CDR's own coordinates are never in the query.
+ 2. search     MASTER over 25,226 SAbDab chains, --gapLen fixed to the
+               loop's length → loops that can bridge that exact gap
+ 3. place      superpose each donor's stems onto the template's stems
+ 4. gate       are the two new peptide bonds real bonds?
+ 5. epitope    antigen residues within 4.5 Å of the template's own CDR
+ 6. score      shape complementarity, backbone only:
+               0.7 × depth-profile correlation + 0.3 × torsion correlation
+ 7. collision  loop backbone atoms within 2.0 Å of antigen
+ 8. rank       sort by (no collision, then shape score)   ← THE TOOL ENDS HERE
+      ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
+ 9. build      graft the chosen loop in, pack side chains (FASPR)   ] example,
+10. relax      turn clashing side chains out of the antigen         ] and
+11. measure    BSA, contacts, H-bonds, salt bridges, clashes, void  ] reusable
 ```
+
+**Stages 1–8 are EpiFitScout.** They need MASTER and the chain database, and
+they return ranked fragments:
+
+```python
+import epifitscout
+result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+for c in result.top:
+    print(c.source, c.sequence, c.shape.describe())
+```
+
+**Stages 9–11 build and measure models** from that ranking. They are a worked
+example rather than a design protocol, they additionally need FASPR, and they
+live in `epifitscout.build`:
+
+```python
+result = epifitscout.graft("7abc.pdb", "H", (95, 102), ("A",), out_dir="models")
+```
+
+The ranking is identical either way — building a model never reorders anything.
+That is deliberate: it is what leaves the all-atom numbers usable as evidence
+*about* the ranking instead of a restatement of it. See [`example/`](example/)
+for what those numbers say, including where they are unflattering.
 
 **Requires:** Linux x86-64 (MASTER's binaries are Linux-only), Python ≥ 3.10,
-about 6 GB of disk.
+about 26 GB of disk for the database.
 
----
+## Two things to know before trusting a result
+
+**Shape alone is not enough, and the pair is the point.** The depth correlation
+has no steric content — it is *maximised* by pressing a loop into the surface.
+Ranked on shape alone, clashes doubled and 47 of 85 models carried more than
+twenty. Stage 7 is the counterweight, and it orders rather than excludes, so a
+target whose candidates all collide still gets an answer.
+
+**A contact gain is not a binding gain.** Contacts and clashes are the same
+geometry at two cutoffs (r = 0.98 across 85 designs). Judge a model by contact
+made at *zero* clashes, not by raw contact count.
 
 ## Setup
+
+### What is in the repository, and what is not
+
+Three things are too large or not ours to redistribute, so you add them once.
+Each has a folder with its own instructions:
+
+| What | Where it goes | Needed for | Instructions |
+|---|---|---|---|
+| **Chain database** `epifitscout-database-v1.0.0.tar.xz` (645 MB → 25 GB) | `data/` | everything | [`data/README.md`](data/README.md) |
+| **MASTER** binaries `master-bin-v1.6.tar.gz` (13 MB) | `MASTER/` → `MASTER/bin/` | everything | [`MASTER/README.md`](MASTER/README.md) |
+| **FASPR** (build from source, ~14 MB) | `FASPR/` → `FASPR/bin/` | stages 9–11 only | [`FASPR/README.md`](FASPR/README.md) |
+
+**FASPR is optional if you only want to search.** Stages 1–8 rank fragments on
+backbone coordinates and never pack anything, so `check` reports a missing FASPR
+as `[--]` rather than `[FAIL]` and still says `Ready.`
+
+### Install
 
 ```bash
 git clone https://github.com/fbabd/EpiFitScout
 cd EpiFitScout
-pip install -e .                  # the -e matters, see the note below
+pip install -e .                  # the -e matters, see below
+pip install -e ".[examples]"      # only if you will run example/
 ```
 
-Then add the two things that are not in the repository. Each has its own folder
-with step-by-step instructions:
+> **Why `pip install -e .`?** EpiFitScout finds `MASTER/bin/` and `data/` by
+> their position next to the code. A regular `pip install .` copies the code
+> away from them; the editable install keeps it in the clone.
 
-| | Put it in | Instructions |
-|---|---|---|
-| **MASTER** binaries (`master-bin-v1.6.tar.gz`) | [`MASTER/`](MASTER/README.md) (becomes `MASTER/bin/`) | download, `tar -xzf … -C MASTER/`, `chmod +x` |
-| **Dataset** (`epifitscout-database-v*.tar.xz`) | [`data/`](data/README.md) | download, `tar -xJf … -C data/` |
+### Add the three pieces
 
-> ⚠️ **The dataset is not on Zenodo yet.** Until the deposit is live, build it
-> with [`database_builder/`](database_builder/README.md) — it pulls from SAbDab
-> and RCSB and produces the same layout, taking a few hours, mostly download.
+```bash
+# 1. the database — verify the checksum first, a truncated archive
+#    unpacks silently and fails later, mid-search
+sha256sum -c SHA256SUMS
+tar -xJf epifitscout-database-v1.0.0.tar.xz -C data/
 
-One more is optional, and only for side-chain packing in
-`epifitscout build`:
+# 2. MASTER
+tar -xzf master-bin-v1.6.tar.gz -C MASTER/
+chmod +x MASTER/bin/*
 
-| | Put it in | Instructions |
-|---|---|---|
-| **FASPR** (build from source) | [`FASPR/`](FASPR/README.md) (becomes `FASPR/bin/`) | build with `g++ -O3 -o FASPR src/*.cpp`, copy it and `dun2010bbdep.bin` into `FASPR/bin/` |
+# 3. FASPR — build outside this repo, the clone shares the folder name
+cd /tmp && git clone https://github.com/tommyhuangthu/FASPR.git
+cd FASPR && g++ -O3 -o FASPR src/*.cpp
+mkdir -p <repo>/FASPR/bin
+cp FASPR dun2010bbdep.bin <repo>/FASPR/bin/
+```
 
-Then check:
+You should end up with:
+
+```
+data/sabdab_chains.db/{pdb,pds}/      25226 files each
+MASTER/bin/{master,createPDS}
+FASPR/bin/{FASPR,dun2010bbdep.bin}    both, in the same directory
+```
+
+### Check
 
 ```bash
 epifitscout check --search        # or: python check_setup.py --search
@@ -59,279 +134,428 @@ epifitscout check --search        # or: python check_setup.py --search
 [ok]   createPDS  /…/epifitscout/MASTER/bin/createPDS
 [ok]   database   /…/epifitscout/data/sabdab_chains.db
        25226 searchable chains (25226 coordinate files, 25226 search targets)
-[ok]   search     20 hits in 2s; best 1A2Y:B RMSD 0.000, score 0.633
-[--]   FASPR      not installed (optional; needed only for --side-chains packed)
+[ok]   FASPR      /…/epifitscout/FASPR/bin/FASPR
+[ok]   search      retrieved=499 feasible=317 pooled=5 returned=3 in 185s
 Ready.
 ```
 
-If something is in the wrong place, the FAIL line says which folder it expected
-and what to run.
-
-> **Why `pip install -e .`?** EpiFitScout finds `MASTER/bin/` and `data/` by
-> their position next to the code. A regular `pip install .` copies the code
-> away from them. The editable install keeps it in the clone.
+`--search` runs a real query end to end, which is the only thing that proves the
+search targets are usable; it takes about three minutes. Without it the check
+only confirms the files are in place. If something is misplaced, the `[FAIL]`
+line names the folder it expected and what to run.
 
 ---
 
-## Quick start
+## Running it
 
-One command takes a complex to grafted structures. Mark the CDR you want
-replaced and the antigen chain, and the epitope is found by proximity:
+### Search: rank fragments (stages 1–8)
 
 ```bash
-epifitscout build \
-    --structure 3gbn.pdb \
-    --cdr H 93 102 \
-    --antigen-chain B \
-    --top 5 --side-chains native \
-    --out-dir grafts
+epifitscout search \
+    --structure 7abc.pdb \
+    --cdr H 95 102 \
+    --antigen A
+```
+
+```python
+import epifitscout
+result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+for c in result.top:
+    print(c.source, c.sequence, c.shape.describe(), c.n_collide)
+```
+
+No packer needed, nothing written to disk.
+
+### Graft: build and measure models (adds stages 9–11)
+
+```bash
+epifitscout graft \
+    --structure 7abc.pdb \
+    --cdr H 95 102 \
+    --antigen A \
+    --out-dir models
+```
+
+```python
+result = epifitscout.graft("7abc.pdb", "H", (95, 102), ("A",), out_dir="models")
+for c in result.top:
+    print(c.source, c.sequence, c.interface.describe())
+```
+
+Needs FASPR. The order of `result.top` is the same as `search` would give —
+building never reorders anything.
+
+### What to pass
+
+`--cdr` takes the chain and the first and last residue numbers of the loop to
+replace, **as numbered in your file**. State it explicitly when comparing
+against another method: IMGT and Chothia CDR-H3 differ by two residues, and left
+alone that has the two methods designing different windows.
+
+`--antigen` takes the chain(s) treated as antigen. The epitope is then found
+automatically, as the antigen residues within 4.5 Å of the template's own CDR.
+
+
+## Quick start
+
+```bash
+epifitscout graft \
+    --structure 7abc.pdb \
+    --cdr H 95 102 \
+    --antigen A \
+    --out-dir models
 ```
 
 ```
-template 3gbn.pdb: CDR H/93-102 (14 residues), epitope B, within 10 A of the CDR: 18-20, 36, 38-39, 41-46, 49 (13 residues), reach 2.8 A
-building 5 complexes
+7ABC:H loop 95-102 (8 res), stems 91-94 and 103-106, span 5.4 Å (0.67 Å/res)
+  retrieved 500  feasible 214  pooled 50  scored 48  returned 10
 
-  1  6UYN:H       rmsd 0.16  score 0.249  join 1.19/1.40 A  clashes 0  contact 2.88 A  01_6UYN_H.pdb
-  2  5C0S:H       rmsd 0.17  score 0.240  join 1.28/1.27 A  clashes 0  contact 2.91 A  02_5C0S_H.pdb
-  3  3GBM:H       rmsd 0.18  score 0.244  join 1.22/1.36 A  clashes 0  contact 2.88 A  03_3GBM_H.pdb
-  4  3GBM:I       rmsd 0.20  score 0.243  join 1.25/1.45 A  clashes 0  contact 2.86 A  04_3GBM_I.pdb
-  5  8DIM:H       rmsd 0.22  score 0.244  join 1.07/1.19 A  clashes 0  contact 2.83 A  05_8DIM_H.pdb
+rank  donor            sequence               obj  interface
+   1  8G19_H           ARDSGYYLDY           +2.31  BSA 812 Å² (loop 241), 63 contacts over 6 residues, 5 H-bonds, 1 salt bridges, gap index 1.84 Å, 0 clashes
+        models/models/003_8G19_H.pdb
+   2  6XKQ_B           ARDRGYSMDV           +1.88  BSA 798 Å² (loop 229), 55 contacts over 6 residues, 4 H-bonds, 1 salt bridges, gap index 2.05 Å, 0 clashes
+        models/models/011_6XKQ_B.pdb
+   …
 
-5 complexes written to grafts
-  ideal peptide bond is 1.33 A; 5/5 join cleanly
-  side chains unavailable for 3: 5C0S:H, 3GBM:H, 3GBM:I
-  summary: grafts/grafts.tsv
+7 of 10 reported models have no clash with the antigen.
 ```
 
-You get one PDB per hit — your template with its CDR replaced by that fragment,
-antigen included — plus `grafts.tsv` ranking them. That is the whole tool; the
-rest of this page is about controlling it.
+Read the funnel left to right — it is how a thin result explains itself:
 
-Read the numbers as: `rmsd` to your query loop, `score` the epitope fit,
-`join` how well the graft meets the framework at each end against a 1.33 Å
-peptide bond, and `contact` its closest approach to the antigen.
+| | means |
+|---|---|
+| `retrieved` | loops in the database that bridge this gap in this geometry |
+| `feasible` | …of those, the ones whose two new peptide bonds are real bonds |
+| `pooled` | …of those, the ones packed and measured (the search budget, `--pool`) |
+| `scored` | …of those, the ones that packed and measured successfully |
+| `returned` | reported, best first (`--top`) |
 
-- **Pick the epitope yourself** instead of by proximity: `--epitope B 38 46`.
-  See [Defining the epitope](#defining-the-epitope).
-- **Side chains**: `none`, `native` or `packed`. See
-  [Building the grafted complexes](#building-the-grafted-complexes).
-- **Just the ranked list, no structures**: use the Python API below.
-- **Look at a fit**: `epifitscout view` exports a PyMOL session.
+The same thing from Python:
+
+```python
+import epifitscout
+
+result = epifitscout.graft("7abc.pdb", "H", (95, 102), ("A",), out_dir="models")
+
+for candidate in result.top:
+    print(candidate.source, candidate.sequence, candidate.interface.describe())
+```
+
+**On `--cdr`:** state the span explicitly when comparing against another method.
+IMGT and Chothia CDR-H3 differ by exactly two residues, and left alone that has
+the two methods designing different windows while every metric is reported as
+though they matched.
 
 ---
 
 ## Usage
 
-For the ranked fragments without building structures, or to script the search:
+### Controlling the search
 
-```python
-import epifitscout
-
-qb = epifitscout.QueryBuilder("my_complex.pdb")
-qb.describe()                                   # list chains and residue ranges
-
-cdr     = qb.get_fragment("H", 100, 110)        # the CDR loop to replace
-epitope = qb.get_epitope_surface("A", residues=(45, 60))   # the epitope you target
-
-hits = epifitscout.search(cdr, epitope)
-
-for i, h in enumerate(hits[:15], 1):
-    print(f"{i:<3} {h.fragment.pdb_id}:{h.fragment.chain:<2} "
-          f"RMSD {h.rmsd_cdr:.2f}  {h.local_fit.describe()}")
-```
-
-```
-1   7UZ5:H  RMSD 0.21  score 0.381: loop residues 99-105 (7 of 14, 50%) against
-                       epitope residues 41-46; gap 5.7 Å, normals 0.30
-```
-
-### Defining the epitope
-
-The epitope is **yours to choose** — it does not have to be something the
-template antibody already touches, since the point of a search is often to find
-a loop that would reach somewhere it doesn't.
-
-```python
-qb.get_epitope_surface("A", residues=(45, 60))            # a contiguous range
-qb.get_epitope_surface("A", residues=[45, 46, 47, 88, 89]) # discontinuous, as real epitopes are
-qb.get_epitope_surface("A", near=cdr, cutoff=10.0)         # reproduce an existing interface
-```
-
-Check it is reachable before searching — a loop cannot stretch to an epitope on
-the far side of the antigen:
-
-```python
-qb.epitope_reach(cdr, epitope)    # closest approach in Å; >15 Å is out of range
-```
-
-A worked example with figures is in
-[`example/example_1a2y.ipynb`](example/example_1a2y.ipynb)
-(`pip install -e ".[examples]"` for its extra dependencies).
-
-### How hits are scored
-
-Step 1 (MASTER) retrieves loops with a similar backbone. Step 2 then **grafts**
-each one onto the CDR site, so it sits in the antibody-antigen frame where your
-loop was, and judges it there:
-
-- a candidate whose backbone comes closer than 2.0 Å to the antigen is
-  **rejected**, a cutoff calibrated on 86 native complexes in which the closest
-  any native CDR backbone comes to its antigen is 2.12 Å (an earlier 2.5 Å
-  cutoff, set from only five complexes, rejected 12% of those natives);
-- the remaining ones are scored by how long a stretch of the loop makes clean
-  contact: `contact quality × (matched length / loop length)`;
-- each hit reports **which** of its residues matched **which** epitope residues,
-  so you can check any result yourself (`h.local_fit.describe()`, or
-  `epifitscout view` to view it in PyMOL).
-
-Step 3 ranks by `0.4 × 1/(1+RMSD) + 0.6 × shape`.
-
-**Read the scores as a way to generate candidates, not as predicted affinity.**
-The weights are not fitted to binding data. What has been measured, on 102
-antibody–antigen complexes drawn from SAbDab:
-
-| Question | Result |
-|---|---|
-| Does the geometric step add anything MASTER lacks? | 14.9% of 40,724 hits collide with the antigen; RMSD predicts which only weakly (median AUC 0.559, p = 0.0012) |
-| Does the score prefer the real epitope? | true site beats the mean reachable decoy in **55/55** complexes (p = 5.5e-11, d = 2.71) |
-| Is the native loop recovered? | median 71st percentile among non-self hits, vs 51st for the superseded scorer (p = 4.4e-07) |
-| Does it track binding energy? | ρ = −0.326 (p = 0.0045) against SAbDab ΔG on 74 complexes |
-
-So the geometry carries real information about the epitope, and more than RMSD
-alone does — but a shape term is not an affinity predictor, and the correlation
-with ΔG is weak. What is *not* yet measured is whether epitope-aware ranking
-produces better antibodies than conformation-only ranking; that comparison is
-the open question, not a settled result. See [`benchmark/`](benchmark/README.md)
-and [`REPORT.md`](REPORT.md).
-
-### Hit fields
-
-| Field | Type | Description |
+| Flag | Default | What it does |
 |---|---|---|
-| `h.fragment.pdb_id` | `str` | PDB ID of the database hit |
-| `h.fragment.chain` | `str` | Chain ID of the hit |
-| `h.fragment.residue_range` | `(int, int)` | Start–end residue numbers |
-| `h.fragment.sequence` | `str` | One-letter sequence |
-| `h.fragment.metadata["chain_type"]` | `"H"` or `"L"` | Heavy or light chain |
-| `h.rmsd_cdr` | `float` | Backbone RMSD to the query CDR (Å) |
-| `h.complementarity_score` | `float` | Shape fit, in [0, 1]; 0 if the loop collides |
-| `h.final_score` | `float` | Combined ranking score, in [0, 1] |
-| `h.local_fit` | `LocalFit` | Where and how far it matched — see below |
+| `--pool` | 50 | Feasible candidates packed and measured. **This is the search budget** — hold it equal across methods being compared |
+| `--top` | 10 | Candidates reported |
+| `--max-hits` | 500 | Matches MASTER returns before the gate |
+| `--rmsd-cut` | 2.0 | Stem RMSD cutoff (Å) |
+| `--stem` | 4 | Framework residues per stem in the query |
+| `--exclude` | — | Donor PDB IDs the search must not return |
+| `--database` | — | A `pds.list` to search instead of the default |
 
-`h.local_fit` carries the detail behind the score:
+`--pool` deserves the emphasis. A bigger pool is a bigger search budget, not a
+better method: in the v1 benchmark a 4.7 standard-error advantage over a
+diffusion model fell to a 0.9 s.e. null once both sides drew an equal-sized pool
+and were ranked by the same objective.
+
+### Leakage, if you are measuring anything
+
+The chain database is built from SAbDab, so a target drawn from SAbDab can
+retrieve its own native loop and rank it first. **Excluding the target's PDB ID
+is not enough**, and the gap is wide. Run the bundled example with only `1A2Y`
+refused and the top five hits for its CDR-H3 are that exact loop — from 1A7O,
+1A7P, 1VFA, 1A7R and 1KIR, five other entries of the same antibody. Exclude the
+sequence as well and the top hit becomes 1KIQ's `ARERDFRLDY`: the native
+`ARERDYRLDY` with one substitution, from an affinity-maturation variant, which
+shares no 8-mer with it because the mutation sits in the middle.
+
+So there are three levels, and a benchmark wants all three:
+
+```bash
+epifitscout graft … --exclude 7ABC              # the target's own entry
+epifitscout graft … --exclude-native-loop       # and variants of its own loop
+epifitscout graft … --database filtered.list    # and its near-duplicate chains
+```
+
+`--exclude-native-loop` refuses any retrieved loop that shares an 8-residue
+stretch with the template's CDR **or** is at least 80% identical to it over the
+same length. The two criteria catch different things: the stretch catches a loop
+embedded in a longer one, the identity catches a point mutant. For a
+ten-residue loop, 80% allows at most two differences, and chance identity that
+high is about 10⁻⁹.
+
+Filtering the PDS list is the cheapest, since those chains are never searched.
+In the v1 audit, 12 of 30 targets had their exact native CDR-H3 present in a
+*different* entry; one had 81 such chains.
+`graft()` exposes two controls for this: `exclude_donors`, a set of PDB IDs the
+search must not return, and `exclude_native_loop=True`, which additionally
+refuses any loop sharing an 8-residue stretch with the template's own CDR.
+Excluding the target's own entry does not cover the same antibody deposited
+under another accession, so set both.
+
+### Scripting the stages
+
+Each stage is usable on its own:
+
+```python
+from pathlib import Path
+from epifitscout.query.builder import QueryBuilder
+from epifitscout.graft.assemble import TemplateSite
+from epifitscout.graft import feasibility
+from epifitscout.scoring.interface import InterfaceScorer
+from epifitscout.pipeline.graft_pipeline import GraftPipeline
+
+qb = QueryBuilder(Path("7abc.pdb"))
+query = qb.get_anchor_query("H", 95, 102)      # the stems, not the loop
+print(query.describe())
+
+site = TemplateSite.load(Path("7abc.pdb"), "H", query.loop_range, ("A",))
+
+pipeline = GraftPipeline()
+candidates = pipeline.search(query, Path("work"))             # stages 1-2
+feasible = feasibility.assess_all(candidates, query, site.framework_coords)
+scored = pipeline.measure(feasible[:50], query, site, Path("work"))   # stages 4-5
+```
+
+### What each candidate carries
 
 | Field | Meaning |
 |---|---|
-| `.fits` | True if a clean contact run was found and nothing collided |
-| `.fragment_residues` | The matched stretch of the loop, in PDB numbering |
-| `.epitope_residues` | The epitope residues it sits against |
-| `.matched_length`, `.fraction_matched` | How far the match runs |
-| `.mean_gap`, `.min_gap` | Separation over the run, in Å |
-| `.n_clash` | Residues closer than 2.0 Å to the antigen |
-| `.describe()` | One-line summary of all of the above |
+| `candidate.source` | Donor entry, chain and residue range |
+| `candidate.sequence` | The retrieved loop's sequence |
+| `candidate.placed_loop` | `(N, 4, 3)` backbone in the template's frame |
+| `candidate.stem_rmsd_bb` | Fit residual of the placement (Å) |
+| `candidate.feasibility` | Junction geometry and the verdict — `.describe()` |
+| `candidate.interface` | Every interface term — `.describe()`, `.as_dict()` |
+| `candidate.z_scores` | Objective terms, standardised within this pool |
+| `candidate.objective` | What the ranking sorted on |
+| `candidate.model_path` | The packed model, if it was kept |
 
-### Building the grafted complexes
+### Defining the epitope
 
-A search returns ranked *fragments*. To get structures — the template complex
-with its CDR replaced by each hit, antigen included — use
-[`epifitscout build`](epifitscout/tools/build_complex.py):
+The ranking measures the interface with whichever antigen chains you name, so
+the "epitope" in v2 is the part of those chains the grafted loop reaches. To
+score against a chosen patch instead, build an `EpitopeSurface`:
 
-```bash
-epifitscout build \
-    --structure my_complex.pdb \
-    --cdr H 93 102 --epitope B 38 46 \
-    --top 5 --side-chains packed \
-    --out-dir grafts
+```python
+qb.get_epitope_surface("A", residues=(45, 60))              # a contiguous range
+qb.get_epitope_surface("A", residues=[45, 46, 47, 88, 89])  # discontinuous
+qb.get_epitope_surface("A", near=cdr, cutoff=10.0)          # an existing interface
+qb.epitope_reach(cdr, epitope)        # closest approach in Å; >15 Å is out of range
 ```
 
-Give `--antigen-chain B` instead of `--epitope` and the epitope is taken to be
-every residue of that chain within `--epitope-cutoff` (10 Å) of the CDR; the
-residues chosen are printed so you can check them.
+### Interface terms
 
-| `--side-chains` | What you get | Needs |
-|---|---|---|
-| `none` (default) | Backbone only at the graft | — |
-| `native` | The fragment's own rotamers, moved rigidly | — |
-| `packed` | Rotamers rebuilt for the new environment | FASPR, see [`FASPR/README.md`](FASPR/README.md) |
+Measured on the packed model, loop against antigen, with water excluded from
+both sides — ordered solvent was modelled around the template's *own* loop, so a
+water where the graft now sits is displaced rather than clashed with.
 
-`packed` repacks the graft and the residues within `--repack-shell` Å of it
-(5 Å by default) and pins the rest, so the experimental model you are grafting
-into is left as deposited. `--repack-all` repacks everything.
+| Term | Definition |
+|---|---|
+| `buried_area` | Antibody–antigen ΔSASA, Shrake–Rupley, 1.4 Å probe. Summed over both partners, so roughly twice the one-sided "interface area" |
+| `loop_buried_area` | The same difference restricted to the graft's atoms |
+| `contacts`, `contact_residues` | Heavy-atom pairs within 4.5 Å, and loop residues taking part |
+| `clashes` | Element-aware: polar pairs may reach 2.2 Å, anything with a carbon 2.8 Å. Calibrated on 102 native interfaces, where they flag ~2% |
+| `hbonds` | Donor–acceptor heavy atoms within 3.5 Å with the angle at the acceptor above 90° |
+| `salt_bridges` | Oppositely charged groups within 4.0 Å, counted once per residue pair |
+| `gap_volume`, `gap_index` | Void trapped between loop and epitope, and that volume per Å² buried — Laskowski's index, by grid approximation |
 
-Each output is checked and reported in `grafts.tsv`: how closely the loop joins
-the framework at both ends (a peptide bond is 1.33 Å), and how close the
-finished loop comes to the antigen. That last number matters — the ranking
-score is computed on backbone alone, so it cannot see a side chain driven into
-the antigen.
+`gap_index` is the term that distinguishes *meshing* from *touching*. A retrieved
+loop was folded against a different antigen, so burying area while leaving
+cavities is its characteristic failure, and no area or contact count detects it.
 
-The clash check is element-aware, because one distance cut cannot tell a
-hydrogen bond from a collision: two polar atoms may come within 2.2 Å, but once
-a carbon is involved the contact is steric and needs 2.8 Å. At one real
-interface, 2.40 Å from Tyr-OH to Gln-CG is a clash while 2.65 Å from Gln-OE1 to
-Gln-NE2 is a good hydrogen bond. Offending atom pairs are named individually.
+Two guards on the ranking, both added after watching it misbehave on a real run:
 
-Those two cutoffs are calibrated on 102 native antibody–antigen interfaces, not
-on van der Waals radii. Deposited structures pack far closer than textbook radii
-allow — the median native closest approach is 2.74 Å polar and 3.17 Å with a
-carbon, but the tails run to 2.12 Å and 1.26 Å. A radii-derived 3.0 Å carbon cut
-flags 12.7% of real interfaces; these cuts flag about 2%, so a flag means a real
-interface would not do this.
+**Clash-free models sort first** (`clean_first`). A clash by the calibrated
+threshold means a real interface would not do this, so the structure is not a
+candidate and no amount of polar contact makes it one. It is a preference rather
+than a gate — when nothing is clean the clashing models are still reported in
+order, because reporting nothing is not more useful.
 
-Expect flags on genuinely good models all the same. A rotamer library is
-discrete, and native side chains often are not: in the bundled 3GBN example the
-native Tyr-H98 sits at a non-rotameric chi1 of 84°, FASPR picks the canonical
-60° one, and those 25° move the hydroxyl from 4.0 Å to 2.4 Å from the antigen.
-Nothing is wrong with the graft — the contact needs a short local minimisation,
-which no packer performs. That is what the flag is telling you.
+**Each standardised term is clipped to ±2 s.d.** (`clip_z`). These terms include
+counts that are zero for almost every candidate, and standardising one of those
+hands the lone exception a z-score of about √n. In a pool of ten where one model
+had a salt bridge and nine had none, that term alone contributed +3.0 and decided
+the ranking — which is how a run came back with none of its five reported models
+clash-free.
 
-Two further details of a packed model are worth knowing. FASPR discards every
-heteroatom, so glycans, ligands and ions are restored afterwards from the
-template — but the template's ordered waters were modelled around the
-template's *own* loop, and some overlap the graft by as little as 0.5 Å. Those
-waters are displaced; an overlapping glycan or ligand is kept and reported
-instead, since removing one is a modelling decision to make rather than hide.
+**Read these as a way to generate and triage candidates, not as predicted
+affinity.** The ranking weights are set by convention, not fitted;
+`epifitscout.scoring.normalize.fit_weights` is the hook for fitting them against
+a held-out outcome, and a flat result there would say the terms carry no
+orderable signal — which is a finding, not a failure.
 
 ---
 
 ## Configuration
 
-Defaults are in [`epifitscout/conf/config.yaml`](epifitscout/conf/config.yaml):
+Defaults are in [`epifitscout/conf/config.yaml`](epifitscout/conf/config.yaml).
+An unknown key in any section is an error rather than a warning: a misspelt
+parameter that fell back to its default would make the run look like a result
+for the setting you asked for.
 
 ```yaml
-master:
-  rmsd_threshold: 2.0    # maximum backbone RMSD (Å) to keep a hit
+master:                    # stage 1
+  rmsd_threshold: 2.0      # stem RMSD cutoff (Å)
   max_hits: 500
-  timeout_seconds: 420
-scoring:                 # S_shape = clip((w_depth*Sd + w_tau*S_tau + 1) / 2, 0, 1)
-  weight_depth: 0.7
-  weight_tau: 0.3
-ranking:                 # S_final = w_rmsd * 1/(1+RMSD) + w_shape * S_shape
-  weight_rmsd: 0.4
-  weight_shape: 0.6
-max_workers: 6           # parallel MASTER processes per query
+  gap_tolerance: 0         # 0 keeps the retrieved loop and the span one-to-one
+feasibility:               # stage 3 — ideal peptide geometry is 1.33 Å, 116°, 122°
+  bond_min: 1.0
+  bond_max: 1.8
+  angle_tolerance: 30.0
+  self_clash_cutoff: 2.2
+interface:                 # stage 5
+  probe_radius: 1.4
+  sasa_points: 200
+  contact_cutoff: 4.5
+  hbond_distance: 3.5
+  grid_spacing: 0.75
+ranking:                   # stage 6 — over z-scored terms, within each target
+  weight_hbond: 1.0
+  weight_salt: 1.0
+  weight_clash: 1.0
+  weight_gap: 1.0
+  clean_first: true        # clashing models sort below clash-free ones
+  clip_z: 2.0              # bound each term's influence
+pool_size: 50
+top_k: 10
+max_workers: 6
 ```
 
-Override any of them per call:
-
-```python
-hits = epifitscout.search(query_cdr, query_epitope,
-                          rmsd_threshold=1.0, weight_depth=0.9, weight_tau=0.1)
-```
-
-| Change | Effect |
-|---|---|
-| `rmsd_threshold` ↓ | Fewer hits, closer backbone match |
-| `rmsd_threshold` ↑ | More hits, more structural diversity |
-| `weight_depth` ↑ | Emphasise protrusion/recession complementarity |
-| `weight_tau` → 0 | Recommended for short or flat loops (H1, L1) |
-| `weight_shape` ↑ | Prioritise surface fit over backbone similarity |
-| `weight_rmsd` ↑ | Stay closer to the query backbone |
+Adding a term to `ranking` removes it from the independent evaluation set. That
+is the trade: a term used to rank cannot also be a finding.
 
 **Speed:** the same search took 2 s with the dataset on local disk and 162 s on a
-slow network filesystem. Put `data/` on fast storage.
+slow network filesystem. Put `data/` on fast storage. Stage 5 is CPU-bound
+(three SASA calculations per candidate), so parallelise across targets rather
+than raising `max_workers` within one.
 
 **Data somewhere else?** (a shared copy on a cluster, say) set
 `EPIFITSCOUT_DB=/path/to/pds.list` and/or `EPIFITSCOUT_MASTER_DIR=/path/to/bin`.
+
+---
+
+## What the measurements say
+
+Measured on 17 complexes (CDR-H3 lengths 5–21), five designs each, against the
+input complex each was grafted into and scored by the identical scorer. Every
+target's own PDB entry was excluded from the search and its native loop sequence
+refused, so nothing here is a restatement of the answer.
+
+### What the tool is good for
+
+**Diverse, novel backbones.** All 85 designs come from 85 distinct donor chains,
+at a mean 21% sequence identity to the loop they replace (median 19%). These are
+not variations on the native loop — they are different real loops that fit the
+same site.
+
+**Sterically valid ones, on most targets.** 30 of 85 designs are clash-free, and
+13 of 17 targets yield at least one, from 30 distinct donors. Those are models
+worth taking further.
+
+**Cheap to enumerate.** Stages 1–8 rank on backbone geometry with no packing, so
+a target costs one MASTER search. Only the models you ask for get built.
+
+That combination — real crystallographic conformations, low identity to the
+native, sterically checked, many per target — is what makes these useful as
+**starting points and as seeds for a generative or optimisation stage**, rather
+than as finished designs.
+
+### Per target: input complex → best clash-free design
+
+The honest unit is the target, not the design. Pooling all 85 designs weights
+each target by how many clash-free models it happened to produce, and one target
+with a 5-residue CDR supplied 5 of the 30. One row per target removes that, and
+a bad target stays visible instead of disappearing into an average.
+
+Burial is also given as a percentage of **that target's own** native loop, since
+an absolute Å² is not comparable between a 5-residue CDR and a 21-residue one.
+
+| target | H3 | clean | loop Å² | %nat | contacts | H-bonds | gap idx | closest Å |
+|---|---|---|---|---|---|---|---|---|
+| 7u9p | 5 | 5/5 | 38 → 62 | 165% | 9 → 28 | 2 → 1 | 11.8 → 8.4 | 2.66 → 2.93 |
+| 7uow | 11 | 2/5 | 171 → 146 | 86% | 26 → 26 | 0 → 0 | 5.2 → 5.0 | 3.40 → 2.91 |
+| 7xst | 11 | 3/5 | 264 → 232 | 88% | 56 → 67 | 4 → 5 | 3.6 → 3.9 | 2.43 → 2.88 |
+| 7wp8 | 12 | 1/5 | 246 → 107 | 44% | 56 → 9 | 3 → 0 | 3.2 → 7.7 | 2.74 → 3.63 |
+| 8jqm | 12 | 3/5 | 141 → 128 | 91% | 71 → 33 | 7 → 1 | 4.8 → 5.3 | 2.90 → 2.89 |
+| 8awm | 13 | 2/5 | 188 → 137 | 73% | 93 → 31 | 6 → 3 | 4.8 → 6.6 | 2.53 → 2.58 |
+| 8bw0 | 13 | 1/5 | 236 → 225 | **95%** | 96 → 72 | 4 → 2 | 3.8 → 4.0 | 2.31 → 2.50 |
+| 8cwk | 14 | 0/5 | — | — | — | — | — | — |
+| 7wn2 | 15 | 2/5 | 250 → 139 | 56% | 88 → 47 | 1 → 0 | 3.7 → 5.2 | 3.27 → 2.93 |
+| 8oxw | 15 | 4/5 | 310 → 208 | 67% | 110 → 62 | 4 → 3 | 4.0 → 6.5 | 2.78 → 2.67 |
+| 7vng | 16 | 4/5 | 220 → 183 | 83% | 93 → 56 | 4 → 1 | 4.0 → 4.9 | 2.60 → 2.76 |
+| 8jio | 16 | 0/5 | — | — | — | — | — | — |
+| 8c3v | 17 | 1/5 | 282 → 284 | **101%** | 115 → 45 | 8 → 1 | 3.4 → 3.7 | 2.45 → 2.87 |
+| 8hes | 18 | 1/5 | 464 → 362 | 78% | 146 → 129 | 10 → 4 | 2.8 → 3.4 | 2.53 → 2.49 |
+| 7x95 | 19 | 0/5 | — | — | — | — | — | — |
+| 7yr0 | 20 | 0/5 | — | — | — | — | — | — |
+| 8g3p | 21 | 1/5 | 647 → 124 | 19% | 226 → 18 | 21 → 1 | 1.7 → 10.0 | 2.62 → 2.81 |
+
+**Burial: median 83% of the native loop** (mean 80%, best 165%), over the 13
+targets that produced a clash-free design — ≥90% on 4, 75–90% on 4, 50–75% on 3.
+`8c3v` matches its native outright; `8bw0` comes within 5%.
+
+**Hydrogen bonds are the clear deficit.** They fall on almost every row —
+8g3p 21→1, 8jqm 7→1, 8c3v 8→1, 8hes 10→4. The graft occupies the site without
+re-forming its chemistry, which is what transplanting a donor sequence unchanged
+would predict: those residues were complementary to a *different* epitope, and
+nothing in the pipeline redesigns them.
+
+**Long CDRs fail hardest.** The four targets with no clash-free design at all
+are H3 14, 16, 19 and 20, and the worst row is the longest (8g3p, H3 21, 19%).
+The stems fix the loop's ends and nothing constrains the middle, so the
+unconstrained span grows with length.
+
+**`%nat` above 100% is not automatically a win.** `7u9p` reads 165% against a
+native loop that buries only 38 Å² — a site the native barely engages. Read that
+row as "there was little to match here".
+
+Reproduce with `python -I 05_per_target.py results/designs.tsv`, which also
+prints the rank-1 and all-five views.
+
+### Pooled over designs, for completeness
+
+Mean ± SD. "Better" means better **for the antibody**: a binder wants more
+buried area, more contacts, more hydrogen bonds and salt bridges, a tight pack
+against the epitope (low gap index), and no interpenetration.
+
+| | input complex | all 85 designs | the 30 clash-free | better |
+|---|---|---|---|---|
+| buried area (Å²) | 1784 ± 266 | 1752 ± 344 | 1634 ± 272 | higher |
+| loop buried area (Å²) | 287 ± 136 | 270 ± 166 | 141 ± 77 | higher |
+| contacts | 96 ± 48 | 155 ± 225 | 34 ± 28 | higher |
+| contact residues | 6.1 ± 2.2 | 5.7 ± 3.2 | 3.3 ± 2.1 | higher |
+| **clashes** | **0.0 ± 0.0** | **15.5 ± 38.5** | 0.0 ± 0.0 | lower |
+| H-bonds | 5.5 ± 4.6 | 4.6 ± 6.6 | 1.2 ± 1.4 | higher |
+| salt bridges | 0.8 ± 1.7 | 0.1 ± 0.3 | 0.0 ± 0.2 | higher |
+| gap index (Å) | 4.1 ± 2.1 | 6.9 ± 17.8 | 12.7 ± 29.1 | lower |
+| closest approach (Å) | 2.69 ± 0.29 | 2.29 ± 0.81 | 3.04 ± 0.63 | ≈ 2.7 |
+
+**Read this table second, and carefully.** The middle column's 155 contacts is
+not a gain: contacts and clashes are the same geometry at two cutoffs (r = 0.98
+across the 85), so it is largely atoms *inside* the antigen — which the clash row
+and the 2.29 Å closest approach confirm. And the right-hand column's 141 Å²
+understates the tool, for the weighting reason above; the per-target median of
+83% is the number to quote.
+
+**What no reading changes:** the designs do not produce a better interface than
+the one they replace. The crystallographic input is clash-free on all 17 targets.
+A clash-free design beats its own input on contacts in 3 of 13 cases, all three
+where the native interface was unusually small (9, 26 and 56 contacts).
+
+No claim is made about affinity. These are geometric measurements on static
+structures.
+
+Full numbers, controls and figures: [`example/`](example/).
 
 ---
 
@@ -356,18 +580,25 @@ targets that are missing or out of date — so an update takes minutes, not hour
 
 ```
 epifitscout/
-├── check_setup.py          verify the setup; --search runs a real example
-├── epifitscout/            the search package
+├── check_setup.py              verify the setup
+├── epifitscout/
+│   ├── types/                  Fragment, AnchorQuery, GraftCandidate, EpitopeSurface
+│   ├── query/builder.py        build the stem query from a complex
+│   ├── master/                 run MASTER, parse matches, place candidates
+│   ├── graft/feasibility.py    stage 4: can it be bonded in?
+│   ├── scoring/                stages 5-7: epitope, shape, collision
+│   ├── build/                  stages 9-11: assemble, pack, relax, measure
+│   ├── pipeline/               stages 1-8, and the optional build
+│   ├── tools/                  CLI entry points and the setup check
 │   └── conf/config.yaml
-├── MASTER/bin/             ← paste the MASTER binaries here
-├── data/                   ← extract the dataset here
-├── FASPR/bin/              ← optional: paste FASPR here, for side-chain packing
-├── tools/                  build grafted complexes, export PyMOL views
-├── database_builder/       rebuild or update the dataset
-├── example/                1a2y worked example
-├── benchmark/              benchmark harness and results
-├── tests/                  test suite (small bundled fixture database)
-├── README.md   REPORT.md   (REPORT.md describes the method in detail)
+├── MASTER/bin/                 ← paste the MASTER binaries here
+├── data/                       ← extract the dataset here (data/README.md)
+├── FASPR/bin/                  ← paste FASPR here
+├── database_builder/           rebuild or update the dataset
+├── example/                    designs vs their input complexes
+├── tests/                      test suite (small bundled fixture database)
+├── example/README.md           what the designs measure against the inputs
+├── README.md                   the method, its results and its limits
 ```
 
 ## Development
@@ -375,12 +606,19 @@ epifitscout/
 ```bash
 pip install -e ".[dev]"
 ruff check . && mypy
-pytest                                      # ~10 s; MASTER-dependent tests skip without it
+pytest                                      # ~60 s; MASTER-dependent tests skip without it
 ```
 
 The suite needs neither the full dataset nor a network: `tests/data/mini_db`
 holds 14 real chains (~400 kB). Tests that drive MASTER skip automatically until
 `MASTER/bin/` is filled in.
+
+Worth knowing what the tests pin down, because two of them are the method's
+calibration: `test_feasibility.py` requires that a native loop re-grafted into
+its own framework passes the gate with near-ideal geometry, and
+`test_interface.py` requires that a loop driven into the antigen shows *both*
+more contacts and more clashes — the confound that made a nonsense control look
+best in v1.
 
 ## Citing
 
@@ -390,10 +628,13 @@ Please cite this software ([`CITATION.cff`](CITATION.cff)) together with:
   motif libraries.* Protein Science 24(4):508–524, 2015.
 * **SAbDab** — Dunbar J *et al.* *SAbDab: the structural antibody database.*
   Nucleic Acids Research 42:D1140–D1146, 2014.
+* **FASPR** — Huang X, Pearce R & Zhang Y. *FASPR: an open-source tool for
+  fast and accurate protein side-chain packing.* Bioinformatics 36(12):3758–3765,
+  2020.
 
 ## Licence
 
 MIT — see [`LICENSE`](LICENSE). This covers EpiFitScout's source only. MASTER (GPL
-for academic use) and SAbDab are distributed by their own authors, are not
+for academic use), SAbDab and FASPR are distributed by their own authors, are not
 included here, and are fetched by you from the original sources. RCSB PDB
 coordinates are public domain.

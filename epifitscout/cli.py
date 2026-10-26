@@ -3,7 +3,8 @@
 A single entry point with one subcommand per task, so the common path is
 
     epifitscout check
-    epifitscout build --structure complex.pdb --cdr H 93 102 --antigen-chain B ...
+    epifitscout graft --structure complex.pdb --cdr H 95 102 --antigen B \
+        --out-dir models/
 
 rather than hunting for a script in the source tree. Each subcommand delegates
 to the module that implements it; the modules keep their own ``main`` so they
@@ -21,10 +22,10 @@ from collections.abc import Callable, Sequence
 _COMMANDS: dict[str, tuple[str, str]] = {
     "check": ("Verify the setup: MASTER, the database, and the optional packer.",
               "epifitscout.tools.setup_check"),
-    "build": ("Search, then write grafted antibody-antigen complexes.",
-              "epifitscout.tools.build_complex"),
-    "view": ("Export a PyMOL session showing where a fragment fits.",
-             "epifitscout.tools.visualize_fit"),
+    "search": ("Retrieve and rank real CDR loops for one site. No packer needed.",
+               "epifitscout.tools.search_cdr"),
+    "graft": ("The same, then build and measure all-atom models. Needs FASPR.",
+              "epifitscout.tools.graft_cdr"),
 }
 
 

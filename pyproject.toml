@@ -1,6 +1,6 @@
 [project]
 name = "epifitscout"
-version = "0.1.0"
+version = "3.0.0"
 description = "Protein structural fragment search with epitope shape complementarity scoring"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,13 +34,10 @@ dependencies = [
 epifitscout = "epifitscout.cli:main"
 
 [project.optional-dependencies]
-# Dependencies of example/ and the tutorial notebook only.
+# example/ only. Biopython, numpy and scipy are already core dependencies;
+# matplotlib is the one thing the figures need and the library does not.
 examples = [
-    "pandas>=2.0",
     "matplotlib>=3.8",
-    "jupyterlab>=4.0",
-    "ipykernel>=6.0",
-    "py3Dmol>=2.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -77,7 +74,6 @@ select = ["E", "F", "I", "UP", "B", "W"]
 # the expanded form.
 "database_builder/*.py" = ["E402"]
 "check_setup.py" = ["E402"]
-"benchmark/*.py" = ["E402", "I001", "E702", "E501"]
 "example/*.py" = ["E402", "I001", "E702", "B905"]
 "example/*.ipynb" = ["E402", "I001", "E702", "E501", "B905", "F811"]
 
@@ -109,6 +105,8 @@ module = [
     "epifitscout.types.fragment",
     "epifitscout.tools.build_complex",
     "epifitscout.tools.visualize_fit",
+    # Writes structures through Bio.PDB, which ships no type information.
+    "epifitscout.build.assemble",
 ]
 disable_error_code = ["no-any-return", "no-untyped-call", "type-arg", "attr-defined"]
 

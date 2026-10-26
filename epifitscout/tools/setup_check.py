@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -43,17 +44,25 @@ def _check_binaries() -> bool:
 
 
 def _check_packer() -> None:
-    """Report the optional side-chain packer. Never fails the check: packing is
-    only needed for ``epifitscout build --side-chains packed``."""
+    """Report the side-chain packer.
+
+    Does not fail the check. Stages 1-8 -- the tool proper -- never pack
+    anything, so a search is fully usable without a packer. It is stages 9-11
+    that need one: they measure an all-atom interface, and without side chains
+    the models are backbone-only at the graft and read as a loose interface on
+    every term.
+    """
     try:
-        from epifitscout.tools.build_complex import check_packer, find_packer
+        from epifitscout.build.packer import check_packer, find_packer
     except ImportError:
         return
 
     exe = find_packer("FASPR")
     if exe is None:
-        print("[--]   FASPR      not installed (optional; needed only for "
-              "--side-chains packed)")
+        print("[--]   FASPR      not installed — searching is unaffected; "
+              "needed only to")
+        print("                  build models (stages 9-11), which are "
+              "backbone-only without it")
         print(f"      see {paths.REPO_ROOT / 'FASPR/README.md'}")
         return
     problem = check_packer(exe, "FASPR")
@@ -91,28 +100,55 @@ def _check_database() -> bool:
 
 
 def _run_search() -> bool:
+    """Run the v2 pipeline end to end on the bundled example.
+
+    The example's own entry is excluded from the search, as a benchmark would
+    exclude it: the database is built from SAbDab and 1A2Y is in it, so without
+    the exclusion this would retrieve the native loop at RMSD ~0 and report a
+    perfect result that means nothing.
+    """
     import epifitscout
 
-    example = Path(__file__).resolve().parent / "example" / "1a2y.pdb"
+    example = paths.REPO_ROOT / "example" / "1a2y.pdb"
     if not example.is_file():
         print(f"{BAD} search      example structure missing: {example}")
         return False
-    qb = epifitscout.QueryBuilder(example)
-    cdr, epi = qb.get_fragment("B", 99, 110), qb.get_fragment("C", 18, 27)
+
     started = time.time()
     try:
-        hits = epifitscout.search(cdr, epi, max_hits=20, log_level="WARNING")
+        with tempfile.TemporaryDirectory(prefix="epifitscout_check_") as tmp:
+            result = epifitscout.graft(
+                example, "B", (105, 117), ("A",),
+                out_dir=Path(tmp), exclude_donors={"1A2Y"},
+                pool_size=5, top_k=3, keep_models=False, max_workers=4,
+            )
     except Exception as exc:
         print(f"{BAD} search      {type(exc).__name__}: {exc}")
         return False
     elapsed = time.time() - started
-    if not hits:
-        print(f"{BAD} search      ran in {elapsed:.0f}s but returned no hits")
+
+    funnel = " ".join(f"{k}={v}" for k, v in result.funnel.items())
+    if not result.ok:
+        print(f"{BAD} search      ran in {elapsed:.0f}s but returned nothing "
+              f"({funnel})")
         return False
-    best = hits[0]
-    print(f"{OK} search      {len(hits)} hits in {elapsed:.0f}s; best "
-          f"{best.fragment.pdb_id}:{best.fragment.chain} "
-          f"RMSD {best.rmsd_cdr:.3f}, score {best.final_score:.3f}")
+    best = result.top[0]
+    print(f"{OK} search      {funnel} in {elapsed:.0f}s")
+    print(f"      best {best.source} {best.sequence} — {best.interface.describe()}")
+    # Only 1A2Y's own entry was excluded, so a different entry holding the same
+    # antibody can still be retrieved — and usually is: 1G7M carries this very
+    # CDR-H3. Worth seeing here, because it is the leakage mode that PDB-ID
+    # exclusion alone misses and that a benchmark has to filter by sequence.
+    native = (
+        "ARERDYRLDY" if best.sequence.upper() == "ARERDYRLDY" else None
+    )
+    if native:
+        print("      note: that is 1a2y's own CDR-H3, from another entry for the "
+              "same antibody.")
+        print("      Only the 1A2Y entry was excluded; a benchmark must also "
+              "exclude donors")
+        print("      that share a stretch of the native loop — see "
+              "benchmark/run_v2_benchmark.py.")
     return True
 
 

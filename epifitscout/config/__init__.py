@@ -1,11 +1,11 @@
 from epifitscout.config.schema import (
     MASTERConfig,
     PipelineConfig,
-    RankingConfig,
+    ShapeConfig,
 )
 
 __all__ = [
     "MASTERConfig",
     "PipelineConfig",
-    "RankingConfig",
+    "ShapeConfig",
 ]

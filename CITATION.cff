@@ -1,16 +1,19 @@
 cff-version: 1.2.0
 message: "If you use EpiFitScout, please cite it as below, together with MASTER and SAbDab."
-title: "EpiFitScout: epitope-complementary CDR fragment retrieval"
+title: "EpiFitScout: retrieval and grafting of CDR loops ranked by epitope fit"
 abstract: >-
-  Given a query CDR loop and its bound epitope, EpiFitScout searches a chain
-  database derived from SAbDab for structurally similar CDR fragments that are
-  geometrically complementary to the epitope surface.
+  Given a bound antibody-antigen complex and a CDR span to replace, EpiFitScout
+  queries the two framework stems flanking that span against a chain database
+  derived from SAbDab, returning every real loop that can bridge the gap. Each
+  is grafted into the template, gated on whether its new peptide bonds are real
+  bonds, rebuilt all-atom, and ranked by the interface it makes with the
+  epitope. The CDR's own coordinates are never part of the query.
 type: software
 authors:
   - family-names: Ashraf
     given-names: Faisal B.
-version: 0.1.0
-date-released: "2026-10-14"
+version: 0.2.0
+date-released: "2026-10-20"
 license: MIT
 repository-code: "https://github.com/fbabd/EpiFitScout"
 keywords:

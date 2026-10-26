@@ -1,44 +1,52 @@
-"""epifitscout — Protein structural fragment search with epitope complementarity scoring.
+"""epifitscout — retrieval and grafting of real CDR loops for a target epitope.
 
 Quick start::
 
     import epifitscout
 
-    qb = epifitscout.QueryBuilder("my_complex.pdb")
-    qb.describe()                                 # show chains + residue numbers
+    result = epifitscout.graft("complex.pdb", "H", (95, 102), ("A",),
+                               out_dir="models")
+    for candidate in result.top:
+        print(candidate.source, candidate.sequence, candidate.shape.describe())
 
-    query_cdr     = qb.get_fragment("H", 100, 112)
-    query_epitope = qb.get_fragment("A",  50,  65)
+The query is the two framework stems flanking the CDR, never the CDR itself, so
+the loops that come back are a prediction rather than a restatement of the one
+already there. Candidates are chosen by how much of the loop sits cleanly
+against the epitope, counted from backbone distances.
 
-    hits = epifitscout.search(query_cdr, query_epitope)
-    for h in hits[:5]:
-        print(h)
-
-Two things are pasted into the repository before searching: the MASTER
-binaries (``MASTER/bin/``) and the chain database (``data/sabdab_chains.db/``).
-Run ``python check_setup.py`` to confirm both are in place.
+Three things are pasted into the repository before searching: the MASTER
+binaries (``MASTER/bin/``), the chain database (``data/sabdab_chains.db/``) and
+FASPR (``FASPR/bin/``). Run ``epifitscout check`` to confirm all three.
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "3.0.0"
 
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from epifitscout import paths
-from epifitscout.config.schema import MASTERConfig, PipelineConfig, RankingConfig, ScoringConfig
+from epifitscout.build.assemble import TemplateSite
+from epifitscout.build.interface import InterfaceScore, InterfaceScorer
+from epifitscout.config.schema import (
+    FeasibilityConfig,
+    InterfaceConfig,
+    MASTERConfig,
+    PipelineConfig,
+    ShapeConfig,
+)
+from epifitscout.graft.feasibility import GraftFeasibility
 from epifitscout.paths import (
     MissingBinaryError,
     MissingDatabaseError,
     SetupError,
 )
-from epifitscout.pipeline.search_pipeline import FragmentSearchPipeline
+from epifitscout.pipeline.graft_pipeline import GraftPipeline, GraftResult
 from epifitscout.query.builder import QueryBuilder, load_fragment_from_pdb
-from epifitscout.types.epitope import EpitopeSurface
-from epifitscout.types.fragment import Fragment, ScoredHit
+from epifitscout.types.anchor_query import AnchorQuery
+from epifitscout.types.candidate import GraftCandidate
+from epifitscout.types.fragment import Fragment
 
 
 def config_from_yaml(yaml_path: Path | str | None = None) -> PipelineConfig:
@@ -78,139 +86,94 @@ def config_from_yaml(yaml_path: Path | str | None = None) -> PipelineConfig:
     with open(path) as fh:
         raw: dict[str, Any] = yaml.safe_load(fh) or {}
 
-    master_raw = raw.get("master", {})
-    scoring_raw = raw.get("scoring", {})
-    ranking_raw = raw.get("ranking", {})
+    def section(name: str, kind: type) -> Any:
+        """Build one config section, rejecting keys it does not have.
+
+        A silently ignored key is a silently ignored experiment: a misspelt
+        ``weight_hbonds`` would leave the default in place and the run would
+        look like a result for the setting that was asked for.
+        """
+        import dataclasses
+
+        values = raw.get(name, {}) or {}
+        known = {f.name for f in dataclasses.fields(kind)}
+        unknown = set(values) - known
+        if unknown:
+            raise SetupError(
+                f"unknown key(s) in config section '{name}': "
+                f"{', '.join(sorted(unknown))}; valid keys are "
+                f"{', '.join(sorted(known))}"
+            )
+        return kind(**values)
 
     return PipelineConfig(
-        master=MASTERConfig(
-            rmsd_threshold=master_raw.get("rmsd_threshold", 1.5),
-            max_hits=master_raw.get("max_hits", 500),
-            timeout_seconds=master_raw.get("timeout_seconds", 300),
-            n_threads=master_raw.get("n_threads", 0),
-        ),
-        scoring=ScoringConfig(
-            weight_depth=scoring_raw.get("weight_depth", 0.7),
-            weight_tau=scoring_raw.get("weight_tau", 0.3),
-        ),
-        ranking=RankingConfig(
-            weight_rmsd=ranking_raw.get("weight_rmsd", 0.4),
-            weight_shape=ranking_raw.get("weight_shape", 0.6),
-        ),
+        master=section("master", MASTERConfig),
+        feasibility=section("feasibility", FeasibilityConfig),
+        interface=section("interface", InterfaceConfig),
+        shape=section("shape", ShapeConfig),
+        pool_size=raw.get("pool_size", 50),
+        top_k=raw.get("top_k", 10),
+        stem_length=raw.get("stem_length", 4),
         log_level=raw.get("log_level", "INFO"),
         max_workers=raw.get("max_workers", 6),
     )
 
 
-def _build_config(
+def graft(
+    template: Path | str,
+    ab_chain: str,
+    loop_span: tuple[int, int],
+    antigen_chains: tuple[str, ...] | list[str],
     *,
-    rmsd_threshold: float | None,
-    max_hits: int | None,
-    weight_depth: float | None,
-    weight_tau: float | None,
-    weight_rmsd: float | None,
-    weight_shape: float | None,
-    binary_path: Path | None,
-    database_path: Path | None,
-    config_path: Path | None,
-    log_level: str | None,
-    max_workers: int | None,
-) -> PipelineConfig:
-    """Build and validate a PipelineConfig, applying per-call overrides.
-
-    Loads base values from ``epifitscout/conf/config.yaml``, then applies
-    explicitly provided overrides and resolves the MASTER binary and chain
-    database.
-
-    Raises:
-        SetupError: If the config, MASTER binary or database is missing. The
-            message says which folder to paste what into.
-    """
-    base = config_from_yaml(config_path)
-
-    bin_path = paths.find_master_binary(binary_path)
-    db_path = paths.find_pds_list(database_path)
-
-    return PipelineConfig(
-        master=MASTERConfig(
-            binary_path=bin_path,
-            database_path=db_path,
-            rmsd_threshold=(
-                rmsd_threshold if rmsd_threshold is not None else base.master.rmsd_threshold
-            ),
-            max_hits=max_hits if max_hits is not None else base.master.max_hits,
-            timeout_seconds=base.master.timeout_seconds,
-            n_threads=base.master.n_threads,
-        ),
-        scoring=ScoringConfig(
-            weight_depth=weight_depth if weight_depth is not None else base.scoring.weight_depth,
-            weight_tau=weight_tau if weight_tau is not None else base.scoring.weight_tau,
-        ),
-        ranking=RankingConfig(
-            weight_rmsd=weight_rmsd if weight_rmsd is not None else base.ranking.weight_rmsd,
-            weight_shape=weight_shape if weight_shape is not None else base.ranking.weight_shape,
-        ),
-        log_level=log_level if log_level is not None else base.log_level,
-        max_workers=max_workers if max_workers is not None else base.max_workers,
-    )
-
-
-def search(
-    query_cdr: Fragment,
-    query_epitope: Fragment | EpitopeSurface,
-    *,
-    rmsd_threshold: float | None = None,
-    max_hits: int | None = None,
-    weight_depth: float | None = None,
-    weight_tau: float | None = None,
-    weight_rmsd: float | None = None,
-    weight_shape: float | None = None,
-    binary_path: Path | None = None,
-    database_path: Path | None = None,
+    out_dir: Path | str | None = None,
+    exclude_donors: set[str] | frozenset[str] | None = None,
+    exclude_native_loop: bool = False,
     config_path: Path | None = None,
-    log_level: str | None = None,
+    pool_size: int | None = None,
+    top_k: int | None = None,
+    packer: str = "FASPR",
+    keep_models: bool = True,
+    build: bool = True,
     max_workers: int | None = None,
-    antibody_body: np.ndarray | None = None,
-    scorer: str = "local",
-) -> list[ScoredHit]:
-    """Search for CDR-like fragments that are complementary to a target epitope.
+) -> GraftResult:
+    """Retrieve, graft and rank real CDR loops for one antibody–antigen complex.
 
-    Runs the full 3-step pipeline: MASTER structural search → shape
-    complementarity scoring → weighted ranking.
-
-    Base configuration comes from ``epifitscout/conf/config.yaml``. Any keyword
-    argument passed explicitly overrides the corresponding value.
-
-    When ``max_workers > 1`` (from config or explicit override), MASTER searches
-    the database in parallel across shards for a ~N× speedup.
+    The v2 entry point. The CDR's own coordinates are never used as the query —
+    the two framework stems flanking it are — so the loops returned are a
+    prediction rather than a restatement of the one already there. See
+    :class:`~epifitscout.pipeline.graft_pipeline.GraftPipeline` for the stages.
 
     Args:
-        query_cdr: Query CDR fragment (backbone coords).
-        query_epitope: The epitope. Pass an
-            :class:`~epifitscout.types.epitope.EpitopeSurface` from
-            ``QueryBuilder.get_epitope_surface(...)``, which reads every atom
-            including side chains. A backbone ``Fragment`` still works but makes
-            contact distances approximate.
-        rmsd_threshold: Maximum backbone RMSD (Å). Overrides config if given.
-        max_hits: Maximum MASTER hits. Overrides config if given.
-        weight_depth: Depth anti-correlation weight in S_shape. Overrides config.
-        weight_tau: Torsion co-correlation weight in S_shape. Overrides config.
-        weight_rmsd: RMSD weight in S_final. Overrides config if given.
-        weight_shape: Shape weight in S_final. Overrides config if given.
-        binary_path: Path to the MASTER binary. Auto-resolved when omitted.
-        database_path: Path to ``pds.list``. Auto-resolved when omitted.
-        config_path: Alternative YAML config file.
-        log_level: Python logging level string. Overrides config if given.
-        max_workers: Parallel MASTER shard processes. Overrides config if given.
-        antibody_body: Optional template antibody atoms, used to orient the
-            loop's outward normals.
-        scorer: ``"local"`` (default) slides each grafted loop along the
-            epitope, rejects candidates that collide with the antigen, and
-            reports where and how far each one matches. ``"profile"`` selects
-            the superseded whole-length correlation scorer.
+        template: The antibody–antigen complex to graft into.
+        ab_chain: Chain carrying the CDR.
+        loop_span: ``(first, last)`` residue numbers of the CDR to replace.
+            State it explicitly when comparing against another method: IMGT and
+            Chothia CDR-H3 differ by two residues, which silently has the two
+            methods designing different windows.
+        antigen_chains: Chains treated as antigen.
+        out_dir: Where models and MASTER files are written. A temporary
+            directory is used when omitted, and models are not kept.
+        exclude_donors: PDB IDs the search must not return — the leakage
+            control for a benchmark drawn from the same source as the database.
+        exclude_native_loop: Also refuse any retrieved loop sharing an
+            8-residue stretch with the template's own CDR. Excluding the
+            target's PDB ID does not cover the same antibody deposited under
+            another accession; a benchmark wants this on.
+        config_path: Alternative YAML config.
+        pool_size: Feasible candidates to pack and measure. This is the search
+            budget; hold it equal across methods being compared.
+        top_k: Candidates to return.
+        packer: Side-chain packer, or ``"none"`` for backbone-only models,
+            which makes the interface numbers diagnostic rather than results.
+        build: Run stages 9-11 -- graft, pack, relax and measure. Off makes
+            this :func:`search`: the ranking only, with no packer needed.
+        keep_models: Keep the packed PDB files.
+        max_workers: Parallel MASTER shards and packing threads.
 
     Returns:
-        Ranked list of :class:`ScoredHit` objects, best first.
+        A :class:`~epifitscout.pipeline.graft_pipeline.GraftResult`, whose
+        ``top`` is the ranked candidates and whose ``funnel`` records how many
+        survived each stage.
 
     Raises:
         MissingBinaryError: If the MASTER executables cannot be found.
@@ -218,47 +181,100 @@ def search(
 
     Example::
 
-        hits = epifitscout.search(query_cdr, query_epitope)
-
-        # Override one weight, rest from the config file
-        hits = epifitscout.search(query_cdr, query_epitope, weight_depth=0.9)
+        result = epifitscout.graft(
+            "7abc.pdb", "H", (95, 102), ("A",), out_dir="models/7abc",
+        )
+        for candidate in result.top:
+            print(candidate.source, candidate.interface.describe())
     """
-    cfg = _build_config(
-        rmsd_threshold=rmsd_threshold,
-        max_hits=max_hits,
-        weight_depth=weight_depth,
-        weight_tau=weight_tau,
-        weight_rmsd=weight_rmsd,
-        weight_shape=weight_shape,
-        binary_path=binary_path,
-        database_path=database_path,
-        config_path=config_path,
-        log_level=log_level,
-        max_workers=max_workers,
+    base = config_from_yaml(config_path)
+    cfg = PipelineConfig(
+        master=MASTERConfig(
+            binary_path=paths.find_master_binary(None),
+            database_path=paths.find_pds_list(None),
+            rmsd_threshold=base.master.rmsd_threshold,
+            max_hits=base.master.max_hits,
+            timeout_seconds=base.master.timeout_seconds,
+            n_threads=base.master.n_threads,
+            gap_tolerance=base.master.gap_tolerance,
+        ),
+        feasibility=base.feasibility,
+        interface=base.interface,
+        shape=base.shape,
+        epitope_cutoff=base.epitope_cutoff,
+        pool_size=pool_size if pool_size is not None else base.pool_size,
+        top_k=top_k if top_k is not None else base.top_k,
+        stem_length=base.stem_length,
+        log_level=base.log_level,
+        max_workers=max_workers if max_workers is not None else base.max_workers,
     )
-    pipeline = FragmentSearchPipeline(cfg)
-    return pipeline.search(
-        query_cdr, query_epitope, antibody_body=antibody_body, scorer=scorer
+    return GraftPipeline(cfg).run(
+        template=Path(template),
+        ab_chain=ab_chain,
+        loop_span=loop_span,
+        antigen_chains=tuple(antigen_chains),
+        out_dir=Path(out_dir) if out_dir is not None else None,
+        exclude_donors=exclude_donors,
+        exclude_native_loop=exclude_native_loop,
+        packer_name=packer,
+        keep_models=keep_models,
+        build=build,
+    )
+
+
+def search(
+    template: Path | str,
+    ab_chain: str,
+    loop_span: tuple[int, int],
+    antigen_chains: tuple[str, ...] | list[str],
+    **kwargs: object,
+) -> GraftResult:
+    """EpiFitScout proper: retrieve, score and rank loops for a CDR site.
+
+    Stages 1-8. Returns candidates ranked by epitope shape complementarity,
+    with colliding ones sorted below the rest. Nothing is grafted, packed or
+    measured, so this needs no packer and writes no models -- and the ranking
+    it returns is identical to the one :func:`graft` reports, because building
+    a model never changes the order.
+
+    Use :func:`graft` instead when you want the all-atom models as well.
+
+    Example:
+        >>> result = epifitscout.search("7abc.pdb", "H", (95, 102), ("A",))
+        >>> for c in result.top:
+        ...     print(c.source, c.sequence, c.shape.describe())
+    """
+    return graft(
+        template, ab_chain, loop_span, antigen_chains,
+        build=False, keep_models=False, **kwargs,  # type: ignore[arg-type]
     )
 
 
 __all__ = [
-    # Top-level convenience API
+    # The tool: search, score, rank
     "search",
-    # Query helpers
+    # The worked example: the above, plus building and measuring models
+    "graft",
+    # Pipeline and its pieces, for stage-by-stage use
+    "GraftPipeline",
+    "GraftResult",
+    "TemplateSite",
     "QueryBuilder",
     "load_fragment_from_pdb",
     # Data types
+    "AnchorQuery",
     "Fragment",
-    "ScoredHit",
-    "EpitopeSurface",
-    # Config (for advanced / step-by-step usage)
+    "GraftCandidate",
+    "GraftFeasibility",
+    "InterfaceScore",
+    "InterfaceScorer",
+    # Configuration
     "config_from_yaml",
-    "FragmentSearchPipeline",
     "PipelineConfig",
     "MASTERConfig",
-    "ScoringConfig",
-    "RankingConfig",
+    "FeasibilityConfig",
+    "InterfaceConfig",
+    "ShapeConfig",
     # Resource resolution
     "paths",
     "SetupError",

@@ -101,34 +101,6 @@ class TestQueryBuilderReadsCif:
             extract_residue_atoms(path, chain, fmt="cif")
         )
 
-    def test_epitope_surface_from_a_cif_entry(self) -> None:
-        path = _a_cif()
-        qb = epifitscout.QueryBuilder(path)
-        chains = qb.chains()
-        if len(chains) < 2:
-            pytest.skip("need at least two chains")
-        lo, hi = qb.residue_range(chains[0])
-        probe = qb.get_fragment(chains[0], lo, min(hi, lo + 9))
-        for other in chains[1:]:
-            try:
-                epitope = qb.get_epitope_surface(other, near=probe, cutoff=12.0)
-            except ValueError:
-                continue
-            assert epitope.n_residues > 0
-            assert epitope.atom_coords.shape[1] == 3
-            return
-        pytest.skip("no chain lies near the probe fragment in this entry")
-
-
-class TestChainIdentifierMismatch:
-    """mmCIF multi-character chain IDs versus the single-character names used by
-    SAbDab and every other PDB-style annotation.
-
-    This cost 30 of 173 mmCIF-only entries (17%) in the original database build:
-    SAbDab asked for chain ``H``, the file contained ``HHH``, and the entry was
-    silently dropped.
-    """
-
     def test_repeated_identifier_resolves(self) -> None:
         for pid in ("6srv", "6ss2", "6ss0"):
             path = Path("../EpiFitScout/data/rcsb_cache") / f"{pid}.cif"
